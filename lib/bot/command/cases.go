@@ -37,9 +37,8 @@ func (c *Commander) InputYourAPIKey(updateMessage *tgbotapi.Message) {
 	db.UsersMap[chatID] = user
 }
 
-
 // update Dialog_Status 3 -> 4
-func (c *Commander) ChooseModel(updateMessage *tgbotapi.Message) {
+func (c *Commander) ChooseModel(updateMessage *tgbotapi.Message, ai_endpoint string) {
 	updateMessage.Text = strings.TrimSpace(updateMessage.Text)
 	chatID := updateMessage.Chat.ID
 	gptKey := updateMessage.Text // handling previouse message
@@ -49,9 +48,10 @@ func (c *Commander) ChooseModel(updateMessage *tgbotapi.Message) {
 	// Since this part is oftenly get an usernamecaught exeption, we debug what user input as key. It's bad, I know, but usernametil we got key validation we need this part.
 	log.Println("Key promt: ", gptKey)
 	user.AiSession.GptKey = gptKey // store key in memory
-		c.RenderModelMenuLAI(chatID)
-		user.DialogStatus = 4
-		db.UsersMap[chatID] = user
+
+	c.RenderModelMenuLAI(chatID, langchain.GetModelsList(gptKey, ai_endpoint))
+	user.DialogStatus = 4
+	db.UsersMap[chatID] = user
 }
 
 // DialogStatus 4 -> 5
@@ -60,53 +60,20 @@ func (c *Commander) HandleModelChoose(updateMessage *tgbotapi.CallbackQuery) {
 	messageID := updateMessage.Message.MessageID
 	model_name := updateMessage.Data
 	user := db.UsersMap[chatID]
-		switch model_name {
-		case "wizard-uncensored-13b":
-			c.attachModel(model_name, chatID)
-			user.AiSession.GptModel = model_name
-			c.RenderLanguage(chatID)
 
-			user.DialogStatus = 5
-			db.UsersMap[chatID] = user
-		case "wizard-uncensored-30b":
-			c.attachModel(model_name, chatID)
-			user.AiSession.GptModel = model_name
-			c.RenderLanguage(chatID)
+	c.attachModel(model_name, chatID)
+	c.RenderLanguage(chatID)
 
-			user.DialogStatus = 5
-			db.UsersMap[chatID] = user
-		case "deepseek-coder-6b-instruct":
-			c.attachModel(model_name, chatID)
-			user.AiSession.GptModel = model_name
-			c.RenderLanguage(chatID)
+	user.AiSession.GptModel = model_name
+	user.DialogStatus = 5
+	db.UsersMap[chatID] = user
 
-			user.DialogStatus = 5
-			db.UsersMap[chatID] = user
-		case "tiger-gemma-9b-v1-i1":
-			c.attachModel(model_name, chatID)
-			user.AiSession.GptModel = model_name
-			c.RenderLanguage(chatID)
-
-			user.DialogStatus = 5
-			db.UsersMap[chatID] = user
-		case "wizard-uncensored-code-34b":
-			c.attachModel(model_name, chatID)
-			user.AiSession.GptModel = model_name
-			c.RenderLanguage(chatID)
-
-			user.DialogStatus = 5
-			db.UsersMap[chatID] = user
-
-		}
-	
 	callbackResponse := tgbotapi.NewCallback(updateMessage.ID, "🐈💨")
 	c.bot.Send(callbackResponse)
 
 	deleteMsg := tgbotapi.NewDeleteMessage(chatID, messageID)
 	c.bot.Send(deleteMsg)
-
 }
-
 
 // low level attach model name to user profile
 func (c *Commander) attachModel(model_name string, chatID int64) {
@@ -122,7 +89,6 @@ func (c *Commander) attachModel(model_name string, chatID int64) {
 	c.bot.Send(msg)
 	db.UsersMap[chatID] = user
 }
-
 
 // internal for attach api key to a user
 func (c *Commander) AttachKey(gpt_key string, chatID int64) {
@@ -150,7 +116,6 @@ func (c *Commander) WrongResponse(updateMessage *tgbotapi.Message) {
 
 }
 
-
 // update update Dialog_Status 5 -> 6
 func (c *Commander) ConnectingToAiWithLanguage(updateMessage *tgbotapi.CallbackQuery, ai_endpoint string) {
 	_ = godotenv.Load()
@@ -166,7 +131,6 @@ func (c *Commander) ConnectingToAiWithLanguage(updateMessage *tgbotapi.CallbackQ
 	c.bot.Send(msg)
 
 	ctx := context.WithValue(c.ctx, "user", user)
-	//ai_endpoint = os.Getenv("AI_ENDPOINT")
 	log.Println("local-ai endpoint is: ", ai_endpoint)
 	go langchain.SetupSequenceWithKey(c.bot, user, language, ctx, ai_endpoint) //local-ai
 

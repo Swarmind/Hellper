@@ -13,9 +13,10 @@ import (
 )
 
 var mu = sync.Mutex{}
-type contextKey string
-const UserKey contextKey = "user"
 
+type contextKey string
+
+const UserKey contextKey = "user"
 
 func SetupSequenceWithKey(
 	bot *tgbotapi.BotAPI,
@@ -35,7 +36,7 @@ func SetupSequenceWithKey(
 
 	switch language {
 	case "English":
-		response,probe, err := tryLanguage(user, "", 1,ai_endpoint)
+		response, probe, err := tryLanguage(user, "", 1, ai_endpoint)
 		if err != nil {
 			errorMessage(err, bot, user)
 		} else {
@@ -50,7 +51,7 @@ func SetupSequenceWithKey(
 			db.UsersMap[chatID] = user
 		}
 	case "Russian":
-		response,probe, err := tryLanguage(user, "", 2,ai_endpoint)
+		response, probe, err := tryLanguage(user, "", 2, ai_endpoint)
 		if err != nil {
 			errorMessage(err, bot, user)
 		} else {
@@ -64,7 +65,7 @@ func SetupSequenceWithKey(
 			db.UsersMap[chatID] = user
 		}
 	default:
-		response,probe, err := tryLanguage(user, language, 0, ai_endpoint)
+		response, probe, err := tryLanguage(user, language, 0, ai_endpoint)
 		if err != nil {
 			errorMessage(err, bot, user)
 		} else {
@@ -79,15 +80,13 @@ func SetupSequenceWithKey(
 		}
 	}
 
-  
 }
 
 // LanguageCode: 0 - default, 1 - Russian, 2 - English
-func tryLanguage(user db.User, language string, languageCode int, ai_endpoint string) (string,*db.ChatSessionGraph, error) {
+func tryLanguage(user db.User, language string, languageCode int, ai_endpoint string) (string, *db.ChatSessionGraph, error) {
 	var languagePromt string
 	//var languageResponse string
 	model := user.AiSession.GptModel
-
 
 	switch languageCode {
 	case 1:
@@ -105,12 +104,11 @@ func tryLanguage(user db.User, language string, languageCode int, ai_endpoint st
 	//model := user.AiSession.GptModel
 	//chatID := user.ID
 
-	
 	//result,thread, err := StartNewChat(ctx,gptKey,model,ai_endpoint,languagePromt)
-	result,thread, err := RunNewAgent(gptKey,model,ai_endpoint,languagePromt)
-		if err != nil {
-			log.Println(err)
-			return "",nil,err
-		}
-	return thread,result, nil
+	result, thread, err := RunNewAgent(gptKey, model, ai_endpoint, languagePromt)
+	if err != nil {
+		log.Println(err)
+		return "", nil, err
+	}
+	return thread, result, nil
 }
