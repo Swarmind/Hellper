@@ -20,12 +20,14 @@ type User struct {
 
 var ErrUserCast = errors.New("failed cast cache value to user struct")
 
+// Used when initial endpoint/token retrieval routine passed for finalizing it, or switching in runtime
 func (s *Service) SetEndpointModel(userId int64, endpoint database.Endpoint, model, token string) error {
 	user, err := s.GetUser(userId)
 	if err != nil {
 		return err
 	}
 
+	// nil Endpoint pointer must be unreachable
 	if *user.Endpoint == endpoint && user.Model == model {
 		return nil
 	}
@@ -44,10 +46,12 @@ func (s *Service) SetEndpointModel(userId int64, endpoint database.Endpoint, mod
 	}
 
 	user.OpenAILLM = llm
+	user.History = nil
 	s.UsersRuntimeCache.Store(userId, user)
 	return nil
 }
 
+// Used for initial endpoint/token retrieval routine
 func (s *Service) SetEndpoint(userId int64, endpoint database.Endpoint) error {
 	user, err := s.GetUser(userId)
 	if err != nil {
@@ -91,16 +95,13 @@ func (s *Service) DropHistory(userId int64) error {
 func (s *Service) GetUser(userId int64) (User, error) {
 	v, ok := s.UsersRuntimeCache.Load(userId)
 	if !ok {
-		s.CreateUser(userId)
-		return User{}, nil
+		user := User{}
+		s.UsersRuntimeCache.Store(userId, user)
+		return user, nil
 	}
 	user, ok := v.(User)
 	if !ok {
 		return User{}, ErrUserCast
 	}
 	return user, nil
-}
-
-func (s *Service) CreateUser(userId int64) {
-	s.UsersRuntimeCache.Store(userId, User{})
 }

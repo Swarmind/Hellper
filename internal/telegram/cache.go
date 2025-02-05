@@ -68,16 +68,13 @@ func (s *Service) SetAwaitingToken(userId int64, awaiting bool) error {
 func (s *Service) GetUser(userId int64) (User, error) {
 	v, ok := s.UsersRuntimeCache.Load(userId)
 	if !ok {
-		s.CreateUser(userId)
-		return User{}, nil
+		user := User{}
+		s.UsersRuntimeCache.Store(userId, user)
+		return user, nil
 	}
 	user, ok := v.(User)
 	if !ok {
 		return User{}, ErrUserCast
 	}
 	return user, nil
-}
-
-func (s *Service) CreateUser(userId int64) {
-	s.UsersRuntimeCache.Store(userId, User{})
 }

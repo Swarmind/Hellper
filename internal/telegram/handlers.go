@@ -146,65 +146,6 @@ func (s *Service) EndpointCallbackHandler(ctx context.Context, b *bot.Bot, updat
 	s.chainTokenInput(userId, response)
 }
 
-func (s *Service) chainTokenInput(userId int64, response *bot.SendMessageParams) {
-	user, err := s.AI.GetUser(userId)
-	if err != nil {
-		response.Text = fmt.Sprintf("AI.GetUser error: %v", err)
-		SendLogResponse("chainTokenInput", s.Bot, s.Ctx, response)
-		return
-	}
-
-	token, err := s.Database.GetToken(userId, user.Endpoint.AuthMethod)
-	if token != "" && err == nil {
-		s.chainModelChoice(userId, response)
-		return
-	}
-	if err != nil && err != sql.ErrNoRows {
-		response.Text = fmt.Sprintf("Database.GetAuth error: %v", err)
-		SendLogResponse("chainModelChoice", s.Bot, s.Ctx, response)
-		return
-	}
-
-	if err = s.SetAwaitingToken(userId, true); err != nil {
-		response.Text = fmt.Sprintf("SetAwaitingToken error: %v", err)
-		SendLogResponse("chainTokenInput", s.Bot, s.Ctx, response)
-		return
-	}
-
-	response.Text = TokenInputPrompt
-	SendLogResponse("chainTokenInput", s.Bot, s.Ctx, response)
-}
-
-func (s *Service) chainModelChoice(userId int64, response *bot.SendMessageParams) {
-	user, err := s.AI.GetUser(userId)
-	if err != nil {
-		response.Text = fmt.Sprintf("AI.GetUser error: %v", err)
-		SendLogResponse("chainModelChoice", s.Bot, s.Ctx, response)
-		return
-	}
-
-	if user.Model != "" {
-		return
-	}
-
-	token, err := s.Database.GetToken(userId, user.Endpoint.AuthMethod)
-	if err != nil {
-		response.Text = fmt.Sprintf("Database.GetAuth error: %v", err)
-		SendLogResponse("chainModelChoice", s.Bot, s.Ctx, response)
-		return
-	}
-	llmModels, err := ai.GetModelsList(user.Endpoint.URL, token)
-	if err != nil {
-		response.Text = fmt.Sprintf("ai.GetModelsList error: %v", err)
-		SendLogResponse("chainModelChoice", s.Bot, s.Ctx, response)
-		return
-	}
-
-	response.Text = ModelSelectMessage
-	response.ReplyMarkup = CreateModelsMarkup(llmModels)
-	SendLogResponse("chainModelChoice", s.Bot, s.Ctx, response)
-}
-
 func (s *Service) ModelHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	userId, chatId, threadId, isForum, chatType := update.Message.From.ID,
 		update.Message.Chat.ID,
@@ -396,4 +337,64 @@ func (s *Service) LogoutHandler(ctx context.Context, b *bot.Bot, update *models.
 	}
 
 	s.AI.UsersRuntimeCache.Delete(userId)
+}
+
+// TODO i don't like that chain approach, yet don't want to introduce enumerated dialog states
+func (s *Service) chainTokenInput(userId int64, response *bot.SendMessageParams) {
+	user, err := s.AI.GetUser(userId)
+	if err != nil {
+		response.Text = fmt.Sprintf("AI.GetUser error: %v", err)
+		SendLogResponse("chainTokenInput", s.Bot, s.Ctx, response)
+		return
+	}
+
+	token, err := s.Database.GetToken(userId, user.Endpoint.AuthMethod)
+	if token != "" && err == nil {
+		s.chainModelChoice(userId, response)
+		return
+	}
+	if err != nil && err != sql.ErrNoRows {
+		response.Text = fmt.Sprintf("Database.GetAuth error: %v", err)
+		SendLogResponse("chainModelChoice", s.Bot, s.Ctx, response)
+		return
+	}
+
+	if err = s.SetAwaitingToken(userId, true); err != nil {
+		response.Text = fmt.Sprintf("SetAwaitingToken error: %v", err)
+		SendLogResponse("chainTokenInput", s.Bot, s.Ctx, response)
+		return
+	}
+
+	response.Text = TokenInputPrompt
+	SendLogResponse("chainTokenInput", s.Bot, s.Ctx, response)
+}
+
+func (s *Service) chainModelChoice(userId int64, response *bot.SendMessageParams) {
+	user, err := s.AI.GetUser(userId)
+	if err != nil {
+		response.Text = fmt.Sprintf("AI.GetUser error: %v", err)
+		SendLogResponse("chainModelChoice", s.Bot, s.Ctx, response)
+		return
+	}
+
+	if user.Model != "" {
+		return
+	}
+
+	token, err := s.Database.GetToken(userId, user.Endpoint.AuthMethod)
+	if err != nil {
+		response.Text = fmt.Sprintf("Database.GetAuth error: %v", err)
+		SendLogResponse("chainModelChoice", s.Bot, s.Ctx, response)
+		return
+	}
+	llmModels, err := ai.GetModelsList(user.Endpoint.URL, token)
+	if err != nil {
+		response.Text = fmt.Sprintf("ai.GetModelsList error: %v", err)
+		SendLogResponse("chainModelChoice", s.Bot, s.Ctx, response)
+		return
+	}
+
+	response.Text = ModelSelectMessage
+	response.ReplyMarkup = CreateModelsMarkup(llmModels)
+	SendLogResponse("chainModelChoice", s.Bot, s.Ctx, response)
 }

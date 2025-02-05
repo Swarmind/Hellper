@@ -22,7 +22,7 @@ func NewHandler(connectionString string) (*Handler, error) {
 			id SERIAL PRIMARY KEY
 		)`)
 	if err != nil {
-		log.Fatalf("failed to create default auth table: %v\n", err)
+		log.Fatalf("failed to create default auth_methods table: %v\n", err)
 	}
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS endpoints (
@@ -32,7 +32,7 @@ func NewHandler(connectionString string) (*Handler, error) {
 			auth_method INT REFERENCES auth_methods(id)
 		)`)
 	if err != nil {
-		log.Fatalf("failed to create default auth table: %v\n", err)
+		log.Fatalf("failed to create default endpoints table: %v\n", err)
 	}
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS auth (
