@@ -6,31 +6,32 @@ import (
 	"hellper/internal/database"
 	"os"
 	"os/signal"
-	"sync"
 
 	"github.com/go-telegram/bot"
 )
 
 type Service struct {
-	Database          *database.Handler
-	AI                *ai.Service
-	Bot               *bot.Bot
-	Username          string
-	Token             string
-	Ctx               context.Context
-	CtxCancel         context.CancelFunc
-	UsersRuntimeCache sync.Map
+	DBHandler *database.Handler
+	AI        *ai.Service
+	Bot       *bot.Bot
+	Username  string
+	Token     string
+	Ctx       context.Context
+	CtxCancel context.CancelFunc
 }
 
 func NewService(token string, database *database.Handler, ai *ai.Service) (*Service, error) {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	service := Service{
-		Database:          database,
-		AI:                ai,
-		Token:             token,
-		Ctx:               ctx,
-		CtxCancel:         cancel,
-		UsersRuntimeCache: sync.Map{},
+		DBHandler: database,
+		AI:        ai,
+		Token:     token,
+		Ctx:       ctx,
+		CtxCancel: cancel,
+	}
+
+	if err := service.CreateTables(); err != nil {
+		return nil, err
 	}
 
 	opts := []bot.Option{

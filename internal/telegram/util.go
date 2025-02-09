@@ -2,7 +2,7 @@ package telegram
 
 import (
 	"context"
-	"hellper/internal/database"
+	"hellper/internal/ai"
 	"log"
 	"strconv"
 
@@ -10,13 +10,25 @@ import (
 	"github.com/go-telegram/bot/models"
 )
 
-func SendLogResponse(funcName string, b *bot.Bot, ctx context.Context, response *bot.SendMessageParams) {
-	if _, err := b.SendMessage(ctx, response); err != nil {
+func DeleteMessageLog(funcName string, b *bot.Bot, ctx context.Context, chatId int64, messageId int) {
+	if _, err := b.DeleteMessage(ctx, &bot.DeleteMessageParams{
+		ChatID:    chatId,
+		MessageID: int(messageId),
+	}); err != nil {
 		log.Printf("%s Bot.SendMessage error: %v", funcName, err)
 	}
 }
 
-func CreateEndpointsMarkup(endpoints []database.Endpoint) models.InlineKeyboardMarkup {
+func SendResponseLog(funcName string, b *bot.Bot, ctx context.Context, response *bot.SendMessageParams) *int {
+	msg, err := b.SendMessage(ctx, response)
+	if err != nil {
+		log.Printf("%s Bot.SendMessage error: %v", funcName, err)
+		return nil
+	}
+	return &msg.ID
+}
+
+func CreateEndpointsMarkup(endpoints []ai.Endpoint) models.InlineKeyboardMarkup {
 	buttons := [][]models.InlineKeyboardButton{}
 	for _, endpoint := range endpoints {
 		buttons = append(buttons, []models.InlineKeyboardButton{

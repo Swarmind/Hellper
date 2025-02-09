@@ -2,8 +2,8 @@ package telegram
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
-	"hellper/internal/ai"
 	"log"
 	"strings"
 
@@ -25,7 +25,7 @@ func (s *Service) RootHandler(ctx context.Context, b *bot.Bot, update *models.Up
 		update.Message.Chat.Type
 
 	message := update.Message.Text
-	tgUser, err := s.GetUser(userId)
+	user, err := s.GetUser(userId)
 	if err != nil {
 		log.Printf("GetUser error: %v", err)
 		return
@@ -46,7 +46,7 @@ func (s *Service) RootHandler(ctx context.Context, b *bot.Bot, update *models.Up
 			if err := s.SetInDialogState(userId, true); err != nil {
 				log.Printf("SetInDialogState error: %v", err)
 			}
-		} else if !tgUser.InDialog {
+		} else if !user.InDialog.Bool {
 			return
 		}
 	}
@@ -54,78 +54,96 @@ func (s *Service) RootHandler(ctx context.Context, b *bot.Bot, update *models.Up
 	response := CreateResponseMessageParams(chatId, threadId, isForum)
 	if err := s.SetChatData(userId, chatId, threadId, isForum, chatType); err != nil {
 		response.Text = fmt.Sprintf("SetChatData error: %v", err)
-		SendLogResponse("RootHandler", s.Bot, s.Ctx, response)
+		SendResponseLog("RootHandler", s.Bot, s.Ctx, response)
 		return
 	}
 
-	user, err := s.AI.GetUser(userId)
-	if err != nil {
-		response.Text = fmt.Sprintf("AI.GetUser error: %v", err)
-		SendLogResponse("RootHandler", s.Bot, s.Ctx, response)
+	session, err := s.AI.GetSession(userId)
+	if err != nil && err != sql.ErrNoRows {
+		response.Text = fmt.Sprintf("AI.GetSession error: %v", err)
+		SendResponseLog("RootHandler", s.Bot, s.Ctx, response)
 		return
 	}
 
-	if tgUser.AwaitingToken {
-		fields := strings.Fields(message)
-		if len(fields) == 0 {
-			response.Text = EmptyTokenMessage
-			SendLogResponse("RootHandler", s.Bot, s.Ctx, response)
-			return
-		}
-
-		if err := s.Database.CreateAuth(
-			userId, user.Endpoint.AuthMethod, strings.TrimSpace(fields[0]),
-		); err != nil {
-			response.Text = fmt.Sprintf("Database.CreateAuth error: %v", err)
-			SendLogResponse("RootHandler", s.Bot, s.Ctx, response)
-		}
-
-		response.Text = ""
-		s.chainModelChoice(userId, response)
-		return
-	}
-
-	if user.Endpoint == nil {
-		endpoints, err := s.Database.GetEndpoints()
+	if session.Endpoint == nil {
+		endpoints, err := s.AI.GetEndpoints()
 		if err != nil {
 			response.Text = fmt.Sprintf("Database.GetEndpoints error: %v", err)
-			SendLogResponse("RootHandler", s.Bot, s.Ctx, response)
+			SendResponseLog("RootHandler", s.Bot, s.Ctx, response)
 			return
 		}
 
 		response.Text = EndpointSelectMessage
 		response.ReplyMarkup = CreateEndpointsMarkup(endpoints)
-		SendLogResponse("RootHandler", s.Bot, s.Ctx, response)
+		SendResponseLog("RootHandler", s.Bot, s.Ctx, response)
 		return
 	}
 
-	if user.Model == "" {
-		token, err := s.Database.GetToken(userId, user.Endpoint.AuthMethod)
-		if err != nil {
-			response.Text = fmt.Sprintf("Database.GetAuth error: %v", err)
-			SendLogResponse("RootHandler", s.Bot, s.Ctx, response)
+	if user.AwaitingToken.Valid {
+		fields := strings.Fields(message)
+		if len(fields) == 0 {
+			response.Text = EmptyTokenMessage
+			SendResponseLog("RootHandler", s.Bot, s.Ctx, response)
 			return
 		}
-		llmModels, err := ai.GetModelsList(user.Endpoint.URL, token)
+
+		if err := s.AI.InsertToken(
+			userId, session.Endpoint.AuthMethod, strings.TrimSpace(fields[0]),
+		); err != nil {
+			response.Text = fmt.Sprintf("AI.InsertToken error: %v", err)
+			SendResponseLog("RootHandler", s.Bot, s.Ctx, response)
+		}
+
+		if err := s.SetAwaitingToken(userId, nil); err != nil {
+			response.Text = fmt.Sprintf("SetAwaitingToken error: %v", err)
+			SendResponseLog("RootHandler", s.Bot, s.Ctx, response)
+		}
+
+		DeleteMessageLog("RootHandler", s.Bot, s.Ctx, chatId, int(user.AwaitingToken.Int64))
+		DeleteMessageLog("RootHandler", s.Bot, s.Ctx, chatId, update.Message.ID)
+
+		s.chainModelChoice(userId, response)
+		return
+	}
+
+	if _, err := s.AI.GetToken(userId, session.Endpoint.AuthMethod); err != nil {
+		if err == sql.ErrNoRows {
+			s.chainTokenInput(userId, response)
+			return
+		} else {
+			response.Text = fmt.Sprintf("AI.GetToken error: %v", err)
+			SendResponseLog("RootHandler", s.Bot, s.Ctx, response)
+			return
+		}
+	}
+
+	if session.Model == nil {
+		token, err := s.AI.GetToken(userId, session.Endpoint.AuthMethod)
 		if err != nil {
-			response.Text = fmt.Sprintf("ai.GetModelsList error: %v", err)
-			SendLogResponse("RootHandler", s.Bot, s.Ctx, response)
+			response.Text = fmt.Sprintf("AI.GetToken error: %v", err)
+			SendResponseLog("RootHandler", s.Bot, s.Ctx, response)
+			return
+		}
+		llmModels, err := s.AI.GetModelsList(session.Endpoint.URL, token)
+		if err != nil {
+			response.Text = fmt.Sprintf("AI.GetModelsList error: %v", err)
+			SendResponseLog("RootHandler", s.Bot, s.Ctx, response)
 			return
 		}
 
 		response.Text = ModelSelectMessage
 		response.ReplyMarkup = CreateModelsMarkup(llmModels)
-		SendLogResponse("RootHandler", s.Bot, s.Ctx, response)
+		SendResponseLog("RootHandler", s.Bot, s.Ctx, response)
 		return
 	}
 
-	text, err := s.AI.Inference(userId, message)
+	text, err := s.AI.Inference(userId, chatId, int64(threadId), message)
 	if err != nil {
 		response.Text = fmt.Sprintf("AI.Inference error: %v", err)
-		SendLogResponse("RootHandler", s.Bot, s.Ctx, response)
+		SendResponseLog("RootHandler", s.Bot, s.Ctx, response)
 		return
 	}
 
 	response.Text = text
-	SendLogResponse("RootHandler", s.Bot, s.Ctx, response)
+	SendResponseLog("RootHandler", s.Bot, s.Ctx, response)
 }

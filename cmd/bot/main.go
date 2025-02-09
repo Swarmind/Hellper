@@ -6,26 +6,26 @@ import (
 	"hellper/internal/telegram"
 	"log"
 	"os"
-	"sync"
 
 	"github.com/joho/godotenv"
 )
 
 func main() {
 	if err := godotenv.Load(); err != nil {
-		log.Printf("failed to load .env: %v\n", err)
+		log.Printf("failed to load .env: %v", err)
 	}
 
 	db, err := database.NewHandler(loadEnv("DB_CONNECTION"))
 	if err != nil {
-		log.Fatalf("failed to create database service: %v\n", err)
+		log.Fatalf("failed to create database service: %v", err)
 	}
-	ai := ai.Service{
-		UsersRuntimeCache: sync.Map{},
-	}
-	tgBot, err := telegram.NewService(loadEnv("BOT_TOKEN"), db, &ai)
+	ai, err := ai.NewAIService(db)
 	if err != nil {
-		log.Fatalf("failed to create telegram service: %v\n", err)
+		log.Fatalf("failed to create AI service: %v", err)
+	}
+	tgBot, err := telegram.NewService(loadEnv("BOT_TOKEN"), db, ai)
+	if err != nil {
+		log.Fatalf("failed to create telegram service: %v", err)
 	}
 
 	// Can be called as non-blocking goroutine if needed
