@@ -209,6 +209,7 @@ func (s *Service) ModelHandler(ctx context.Context, b *bot.Bot, update *models.U
 			SendResponseLog("ModelHandler", s.Bot, s.Ctx, response)
 			return
 		}
+		s.AI.DropHandler(userId)
 
 		response.Text = fmt.Sprintf(ModelUsingMessage, model)
 		SendResponseLog("ModelHandler", s.Bot, s.Ctx, response)
@@ -275,6 +276,7 @@ func (s *Service) ModelCallbackHandler(ctx context.Context, b *bot.Bot, update *
 		SendResponseLog("ModelCallbackHandler", s.Bot, s.Ctx, response)
 		return
 	}
+	s.AI.DropHandler(userId)
 
 	response.Text = fmt.Sprintf(ModelUsingMessage, model)
 	SendResponseLog("ModelCallbackHandler", s.Bot, s.Ctx, response)
@@ -377,6 +379,7 @@ func (s *Service) LogoutHandler(ctx context.Context, b *bot.Bot, update *models.
 		SendResponseLog("LogoutHandler", s.Bot, s.Ctx, response)
 		return
 	}
+	s.AI.DropHandler(userId)
 
 	response.Text = fmt.Sprintf(LogoutMessage, session.Endpoint.Name)
 	SendResponseLog("LogoutHandler", s.Bot, s.Ctx, response)
