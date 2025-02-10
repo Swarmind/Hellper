@@ -31,29 +31,20 @@ const EndInPrivateMessage = "Has no effect in private chat"
 
 const LogoutMessage = "Logout from endpoint %s successful"
 
+const UsageTokens = `	Completion: %d
+	Prompt: %d
+	Total: %d
+`
+const UsageTimings = `	Prompt processing: %.1fms (%.1ft/s)
+	Token generation: %.1fms (%.1ft/s)
+`
 const UsageMessage = `Global usage:
-	Completion: %d
-	Prompt: %d
-	Total: %d
-
-	Prompt processing: %.1fms (%.1ft/s)
-	Token generation:%.1fms (%.1ft/s)
-
+%s
 Session usage:
-	Completion: %d
-	Prompt: %d
-	Total: %d
-
-	Prompt processing: %.1fms (%.1ft/s)
-	Token generation:%.1fms (%.1ft/s)
-
+%s
 Last usage:
-	Completion: %d
-	Prompt: %d
-	Total: %d
-
-	Prompt processing: %.1fms (%.1ft/s)
-	Token generation:%.1fms (%.1ft/s)`
+%s
+`
 
 func (s *Service) EndpointHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	userId, chatId, threadId, isForum, chatType := update.Message.From.ID,
@@ -446,25 +437,39 @@ func (s *Service) UsageHandler(ctx context.Context, b *bot.Bot, update *models.U
 		return
 	}
 
-	globalUsagePromptSpeed := float64(globalUsage.PromptTokens) / (globalUsage.TimingPromptProcessing * 0.001)
-	globalUsageCompletionSpeed := float64(globalUsage.CompletionTokens) / (globalUsage.TimingTokenGeneration * 0.001)
-	sessionUsagePromptSpeed := float64(sessionUsage.PromptTokens) / (sessionUsage.TimingPromptProcessing * 0.001)
-	sessionUsageCompletionSpeed := float64(sessionUsage.CompletionTokens) / (sessionUsage.TimingTokenGeneration * 0.001)
-	lastUsagePromptSpeed := float64(lastUsage.PromptTokens) / (lastUsage.TimingPromptProcessing * 0.001)
-	lastUsageCompletionSpeed := float64(lastUsage.CompletionTokens) / (lastUsage.TimingTokenGeneration * 0.001)
+	globalUsageString := fmt.Sprintf(UsageTokens, globalUsage.CompletionTokens, globalUsage.PromptTokens, globalUsage.TotalTokens)
+	if globalUsage.TimingPromptProcessing > 0 && globalUsage.TimingTokenGeneration > 0 {
+		globalUsagePromptSpeed := float64(globalUsage.PromptTokens) / (globalUsage.TimingPromptProcessing * 0.001)
+		globalUsageCompletionSpeed := float64(globalUsage.CompletionTokens) / (globalUsage.TimingTokenGeneration * 0.001)
+
+		globalUsageString += "\n" + fmt.Sprintf(UsageTimings,
+			globalUsage.TimingPromptProcessing, globalUsagePromptSpeed,
+			globalUsage.TimingTokenGeneration, globalUsageCompletionSpeed,
+		)
+	}
+	sessionUsageString := fmt.Sprintf(UsageTokens, sessionUsage.CompletionTokens, sessionUsage.PromptTokens, sessionUsage.TotalTokens)
+	if sessionUsage.TimingPromptProcessing > 0 && sessionUsage.TimingTokenGeneration > 0 {
+		sessionUsagePromptSpeed := float64(sessionUsage.PromptTokens) / (sessionUsage.TimingPromptProcessing * 0.001)
+		sessionUsageCompletionSpeed := float64(sessionUsage.CompletionTokens) / (sessionUsage.TimingTokenGeneration * 0.001)
+
+		sessionUsageString += "\n" + fmt.Sprintf(UsageTimings,
+			sessionUsage.TimingPromptProcessing, sessionUsagePromptSpeed,
+			sessionUsage.TimingTokenGeneration, sessionUsageCompletionSpeed,
+		)
+	}
+	lastUsageString := fmt.Sprintf(UsageTokens, lastUsage.CompletionTokens, lastUsage.PromptTokens, lastUsage.TotalTokens)
+	if lastUsage.TimingPromptProcessing > 0 && lastUsage.TimingTokenGeneration > 0 {
+		lastUsagePromptSpeed := float64(lastUsage.PromptTokens) / (lastUsage.TimingPromptProcessing * 0.001)
+		lastUsageCompletionSpeed := float64(lastUsage.CompletionTokens) / (lastUsage.TimingTokenGeneration * 0.001)
+
+		lastUsageString += "\n" + fmt.Sprintf(UsageTimings,
+			lastUsage.TimingPromptProcessing, lastUsagePromptSpeed,
+			lastUsage.TimingTokenGeneration, lastUsageCompletionSpeed,
+		)
+	}
 
 	response.Text = fmt.Sprintf(UsageMessage,
-		globalUsage.CompletionTokens, globalUsage.PromptTokens, globalUsage.TotalTokens,
-		globalUsage.TimingPromptProcessing, globalUsagePromptSpeed,
-		globalUsage.TimingTokenGeneration, globalUsageCompletionSpeed,
-
-		sessionUsage.CompletionTokens, sessionUsage.PromptTokens, sessionUsage.TotalTokens,
-		sessionUsage.TimingPromptProcessing, sessionUsagePromptSpeed,
-		sessionUsage.TimingTokenGeneration, sessionUsageCompletionSpeed,
-
-		lastUsage.CompletionTokens, lastUsage.PromptTokens, lastUsage.TotalTokens,
-		lastUsage.TimingPromptProcessing, lastUsagePromptSpeed,
-		lastUsage.TimingTokenGeneration, lastUsageCompletionSpeed,
+		globalUsageString, sessionUsageString, lastUsageString,
 	)
 	SendResponseLog("UsageHandler", s.Bot, s.Ctx, response)
 }
