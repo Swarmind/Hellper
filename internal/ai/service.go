@@ -8,8 +8,6 @@ import (
 	"github.com/tmc/langchaingo/llms/openai"
 )
 
-const OpenAIAPIVersion = "v1"
-
 var ErrHandlerNotFound = errors.New("handler for that user id is not found")
 var ErrHandlerCast = errors.New("failed to cast LLM handler")
 
@@ -47,7 +45,6 @@ func (s *Service) UpdateHandler(userId int64, token, model, endpointURL string) 
 		openai.WithToken(token),
 		openai.WithModel(model),
 		openai.WithBaseURL(endpointURL),
-		openai.WithAPIVersion(OpenAIAPIVersion),
 	)
 	if err != nil {
 		return nil, err

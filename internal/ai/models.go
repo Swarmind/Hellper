@@ -17,7 +17,7 @@ type OpenAIModelsResponse struct {
 
 func (s *Service) GetModelsList(endpoint, token string) ([]string, error) {
 	modelsList := []string{}
-	urlPath, err := url.JoinPath(endpoint, OpenAIAPIVersion, "models")
+	urlPath, err := url.JoinPath(endpoint, "models")
 	if err != nil {
 		return modelsList, err
 	}
