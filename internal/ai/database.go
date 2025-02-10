@@ -18,6 +18,15 @@ type Endpoint struct {
 	AuthMethod int64
 }
 
+type Usage struct {
+	CompletionTokens       int
+	PromptTokens           int
+	TotalTokens            int
+	ReasoningTokens        int
+	TimingTokenGeneration  float64
+	TimingPromptProcessing float64
+}
+
 func (s *Service) CreateTables() error {
 	_, err := s.DBHandler.DB.Exec(`
 		CREATE TABLE IF NOT EXISTS auth_methods (
@@ -68,6 +77,40 @@ func (s *Service) CreateTables() error {
 		return err
 	}
 	_, err = s.DBHandler.DB.Exec(`
+		CREATE TABLE IF NOT EXISTS last_usage (
+			id BIGSERIAL PRIMARY KEY,
+			chat_session INT REFERENCES chat_sessions(id),
+			completion_tokens INT,
+			prompt_tokens INT,
+			total_tokens INT,
+			reasoning_tokens INT,
+			timing_token_generation REAL,
+			timing_token_processing REAL,
+			UNIQUE (chat_session)
+		)`)
+	if err != nil {
+		return err
+	}
+	_, err = s.DBHandler.DB.Exec(`
+		CREATE TABLE IF NOT EXISTS usage (
+			id BIGSERIAL PRIMARY KEY,
+			chat_session INT REFERENCES chat_sessions(id),
+			tg_user_id INT NOT NULL,
+			completion_tokens INT,
+			prompt_tokens INT,
+			total_tokens INT,
+			reasoning_tokens INT,
+			timing_token_generation REAL,
+			timing_token_processing REAL,
+			UNIQUE (chat_session)
+		);
+
+		CREATE UNIQUE INDEX IF NOT EXISTS unique_user_usage_null_session ON usage (tg_user_id) WHERE chat_session IS NULL;
+		`)
+	if err != nil {
+		return err
+	}
+	_, err = s.DBHandler.DB.Exec(`
 		CREATE TABLE IF NOT EXISTS chat_messages (
 			id BIGSERIAL PRIMARY KEY,
 			chat_session INT NOT NULL REFERENCES chat_sessions(id),
@@ -77,6 +120,94 @@ func (s *Service) CreateTables() error {
 
 		CREATE INDEX IF NOT EXISTS idx_chat_session_timestamp ON chat_messages (chat_session, created_at);
 		`)
+	if err != nil {
+		return err
+	}
+	_, err = s.DBHandler.DB.Exec(`
+		CREATE OR REPLACE FUNCTION upsert_chat_session_and_usage(
+		    p_user_id BIGINT,
+		    p_endpoint_id INT,
+		    p_chat_id INT,
+		    p_thread_id INT,
+		    p_model TEXT,
+		    p_usage_completion_tokens INT,
+		    p_usage_prompt_tokens INT,
+		    p_usage_total_tokens INT,
+		    p_usage_reasoning_tokens INT,
+		    p_usage_timing_token_generation REAL,
+		    p_usage_timing_token_processing REAL
+		)
+		RETURNS VOID AS $$
+		DECLARE
+		    v_chat_session_id INT;
+		BEGIN
+		    SELECT id INTO v_chat_session_id
+		    FROM chat_sessions
+		    WHERE
+		    	tg_user_id = p_user_id AND
+		    	endpoint = p_endpoint_id AND
+		    	chat_id = p_chat_id AND
+		    	thread_id = p_thread_id;
+		
+		    IF NOT FOUND THEN
+		        INSERT INTO chat_sessions
+		        	(tg_user_id, model, endpoint, chat_id, thread_id)
+		        VALUES
+		        	(p_user_id, p_model, p_endpoint_id, p_chat_id, p_thread_id)
+		        RETURNING id INTO v_chat_session_id;
+		    END IF;
+		
+		    INSERT INTO usage
+		    	(chat_session, tg_user_id, completion_tokens, prompt_tokens,
+		    	total_tokens, reasoning_tokens,
+		    	timing_token_generation, timing_token_processing)
+		    VALUES
+		    	(v_chat_session_id, p_user_id, p_usage_completion_tokens, p_usage_prompt_tokens,
+		    	p_usage_total_tokens, p_usage_reasoning_tokens,
+		    	p_usage_timing_token_generation, p_usage_timing_token_processing)
+		    ON CONFLICT (chat_session) DO UPDATE SET
+		        completion_tokens = usage.completion_tokens + EXCLUDED.completion_tokens,
+		        prompt_tokens = usage.prompt_tokens + EXCLUDED.prompt_tokens,
+		        total_tokens = usage.total_tokens + EXCLUDED.total_tokens,
+		        reasoning_tokens = usage.reasoning_tokens + EXCLUDED.reasoning_tokens,
+		        timing_token_generation = usage.timing_token_generation + EXCLUDED.timing_token_generation,
+		        timing_token_processing = usage.timing_token_processing + EXCLUDED.timing_token_processing;
+
+		    INSERT INTO last_usage
+		    	(chat_session, completion_tokens, prompt_tokens,
+		    	total_tokens, reasoning_tokens,
+		    	timing_token_generation, timing_token_processing)
+		    VALUES
+		    	(v_chat_session_id, p_usage_completion_tokens, p_usage_prompt_tokens,
+		    	p_usage_total_tokens, p_usage_reasoning_tokens,
+		    	p_usage_timing_token_generation, p_usage_timing_token_processing)
+		    ON CONFLICT (chat_session) DO UPDATE SET
+		        completion_tokens = EXCLUDED.completion_tokens,
+		        prompt_tokens = EXCLUDED.prompt_tokens,
+		        total_tokens = EXCLUDED.total_tokens,
+		        reasoning_tokens = EXCLUDED.reasoning_tokens,
+		        timing_token_generation = EXCLUDED.timing_token_generation,
+		        timing_token_processing = EXCLUDED.timing_token_processing;
+		
+		    INSERT INTO usage
+		    	(chat_session, tg_user_id, completion_tokens, prompt_tokens,
+		    	total_tokens, reasoning_tokens,
+		    	timing_token_generation, timing_token_processing)
+		    VALUES
+		    	(NULL, p_user_id, p_usage_completion_tokens, p_usage_prompt_tokens,
+		    	p_usage_total_tokens, p_usage_reasoning_tokens,
+		    	p_usage_timing_token_generation, p_usage_timing_token_processing)
+		    ON CONFLICT (tg_user_id) WHERE chat_session IS NULL DO UPDATE SET 
+		        completion_tokens = usage.completion_tokens + EXCLUDED.completion_tokens,
+		        prompt_tokens = usage.prompt_tokens + EXCLUDED.prompt_tokens,
+		        total_tokens = usage.total_tokens + EXCLUDED.total_tokens,
+		        reasoning_tokens = usage.reasoning_tokens + EXCLUDED.reasoning_tokens,
+		        timing_token_generation = usage.timing_token_generation + EXCLUDED.timing_token_generation,
+		        timing_token_processing = usage.timing_token_processing + EXCLUDED.timing_token_processing;
+		
+		END;
+		$$ LANGUAGE plpgsql;
+    `)
 	return err
 }
 
@@ -114,6 +245,121 @@ func (s *Service) UpdateHistory(
 		SELECT (SELECT id FROM ChatSessionID), $6
 		`, userId, endpointId, chatId, threadId, model, contentBytes)
 	return err
+}
+
+func (s *Service) UpdateUsage(
+	userId, endpointId, chatId, threadId int64,
+	model string, usage map[string]any,
+) error {
+	var usageStruct Usage
+	if val, ok := usage["CompletionTokens"]; ok {
+		usageStruct.CompletionTokens = val.(int)
+	}
+	if val, ok := usage["PromptTokens"]; ok {
+		usageStruct.PromptTokens = val.(int)
+	}
+	if val, ok := usage["TotalTokens"]; ok {
+		usageStruct.TotalTokens = val.(int)
+	}
+	if val, ok := usage["ReasoningTokens"]; ok {
+		usageStruct.ReasoningTokens = val.(int)
+	}
+	if val, ok := usage["TimingPromptProcessing"]; ok {
+		usageStruct.TimingPromptProcessing = val.(float64)
+	}
+	if val, ok := usage["TimingTokenGeneration"]; ok {
+		usageStruct.TimingTokenGeneration = val.(float64)
+	}
+
+	_, err := s.DBHandler.DB.Exec(`
+		SELECT upsert_chat_session_and_usage($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11);
+	`,
+		userId, endpointId, chatId, threadId, model,
+		usageStruct.CompletionTokens, usageStruct.PromptTokens,
+		usageStruct.TotalTokens, usageStruct.ReasoningTokens,
+		usageStruct.TimingPromptProcessing, usageStruct.TimingTokenGeneration,
+	)
+	return err
+}
+
+func (s *Service) DropUsage(
+	userId, endpointId, chatId, threadId int64, model string,
+) error {
+	_, err := s.DBHandler.DB.Exec(`
+    DELETE FROM usage
+    WHERE chat_session IN (
+        SELECT id
+        FROM chat_sessions
+        WHERE tg_user_id = $1 AND
+        	endpoint = $2 AND
+        	chat_id = $3 AND
+        	thread_id = $4 AND
+        	model = $5
+    )`, userId, endpointId, chatId, threadId, model)
+	return err
+}
+
+func (s *Service) GetUsage(
+	userId, endpointId, chatId, threadId int64, model string,
+) (*Usage, *Usage, *Usage, error) {
+	row := s.DBHandler.DB.QueryRow(`
+    	SELECT completion_tokens, prompt_tokens,
+    		total_tokens, reasoning_tokens,
+    		timing_token_generation, timing_token_processing
+    	FROM usage
+    	WHERE tg_user_id = $1 AND chat_session IS NULL
+	`, userId)
+	var globalUsage Usage
+	err := row.Scan(
+		&globalUsage.CompletionTokens, &globalUsage.PromptTokens,
+		&globalUsage.TotalTokens, &globalUsage.TotalTokens,
+		&globalUsage.TimingTokenGeneration, &globalUsage.TimingPromptProcessing)
+	if err != nil && err != sql.ErrNoRows {
+		return nil, nil, nil, err
+	}
+
+	row = s.DBHandler.DB.QueryRow(`
+    	SELECT u.completion_tokens, u.prompt_tokens,
+    		u.total_tokens, u.reasoning_tokens,
+    		u.timing_token_generation, u.timing_token_processing
+    	FROM usage u
+    	JOIN chat_sessions cs ON u.chat_session = cs.id
+    	WHERE cs.tg_user_id = $1
+    	  AND cs.endpoint = $2
+    	  AND cs.chat_id = $3
+    	  AND cs.thread_id = $4
+    	  AND cs.model = $5
+	`, userId, endpointId, chatId, threadId, model) // Pass parameters
+	var sessionUsage Usage
+	err = row.Scan(
+		&sessionUsage.CompletionTokens, &sessionUsage.PromptTokens,
+		&sessionUsage.TotalTokens, &sessionUsage.TotalTokens,
+		&sessionUsage.TimingTokenGeneration, &sessionUsage.TimingPromptProcessing)
+	if err != nil && err != sql.ErrNoRows {
+		return nil, nil, nil, err
+	}
+
+	row = s.DBHandler.DB.QueryRow(`
+    	SELECT u.completion_tokens, u.prompt_tokens,
+    		u.total_tokens, u.reasoning_tokens,
+    		u.timing_token_generation, u.timing_token_processing
+    	FROM last_usage u
+    	JOIN chat_sessions cs ON u.chat_session = cs.id
+    	WHERE cs.tg_user_id = $1
+    	  AND cs.endpoint = $2
+    	  AND cs.chat_id = $3
+    	  AND cs.thread_id = $4
+    	  AND cs.model = $5
+	`, userId, endpointId, chatId, threadId, model) // Pass parameters
+	var lastUsage Usage
+	err = row.Scan(
+		&lastUsage.CompletionTokens, &lastUsage.PromptTokens,
+		&lastUsage.TotalTokens, &lastUsage.TotalTokens,
+		&lastUsage.TimingTokenGeneration, &lastUsage.TimingPromptProcessing)
+	if err != nil && err != sql.ErrNoRows {
+		return nil, nil, nil, err
+	}
+	return &globalUsage, &sessionUsage, &lastUsage, nil
 }
 
 func (s *Service) GetHistory(

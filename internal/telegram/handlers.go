@@ -31,6 +31,30 @@ const EndInPrivateMessage = "Has no effect in private chat"
 
 const LogoutMessage = "Logout from endpoint %s successful"
 
+const UsageMessage = `Global usage:
+	Completion: %d
+	Prompt: %d
+	Total: %d
+
+	Prompt processing: %.1fms (%.1ft/s)
+	Token generation:%.1fms (%.1ft/s)
+
+Session usage:
+	Completion: %d
+	Prompt: %d
+	Total: %d
+
+	Prompt processing: %.1fms (%.1ft/s)
+	Token generation:%.1fms (%.1ft/s)
+
+Last usage:
+	Completion: %d
+	Prompt: %d
+	Total: %d
+
+	Prompt processing: %.1fms (%.1ft/s)
+	Token generation:%.1fms (%.1ft/s)`
+
 func (s *Service) EndpointHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	userId, chatId, threadId, isForum, chatType := update.Message.From.ID,
 		update.Message.Chat.ID,
@@ -288,6 +312,8 @@ func (s *Service) ClearHandler(ctx context.Context, b *bot.Bot, update *models.U
 		update.Message.MessageThreadID,
 		update.Message.Chat.IsForum,
 		update.Message.Chat.Type
+	defer DeleteMessageLog("ClearHandler", s.Bot, s.Ctx, chatId, update.Message.ID)
+
 	response := CreateResponseMessageParams(chatId, threadId, isForum)
 	if err := s.SetChatData(userId, chatId, threadId, isForum, chatType); err != nil {
 		response.Text = fmt.Sprintf("SetChatData error: %v", err)
@@ -303,6 +329,11 @@ func (s *Service) ClearHandler(ctx context.Context, b *bot.Bot, update *models.U
 
 	if err := s.AI.DropHistory(userId, session.Endpoint.ID, chatId, int64(threadId), *session.Model); err != nil {
 		response.Text = fmt.Sprintf("AI.DropHistory error: %v", err)
+		SendResponseLog("ClearHandler", s.Bot, s.Ctx, response)
+		return
+	}
+	if err := s.AI.DropUsage(userId, session.Endpoint.ID, chatId, int64(threadId), *session.Model); err != nil {
+		response.Text = fmt.Sprintf("AI.DropUsage error: %v", err)
 		SendResponseLog("ClearHandler", s.Bot, s.Ctx, response)
 		return
 	}
@@ -383,6 +414,59 @@ func (s *Service) LogoutHandler(ctx context.Context, b *bot.Bot, update *models.
 
 	response.Text = fmt.Sprintf(LogoutMessage, session.Endpoint.Name)
 	SendResponseLog("LogoutHandler", s.Bot, s.Ctx, response)
+}
+
+func (s *Service) UsageHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
+	userId, chatId, threadId, isForum, chatType := update.Message.From.ID,
+		update.Message.Chat.ID,
+		update.Message.MessageThreadID,
+		update.Message.Chat.IsForum,
+		update.Message.Chat.Type
+	defer DeleteMessageLog("UsageHandler", s.Bot, s.Ctx, chatId, update.Message.ID)
+
+	response := CreateResponseMessageParams(chatId, threadId, isForum)
+	if err := s.SetChatData(userId, chatId, threadId, isForum, chatType); err != nil {
+		response.Text = fmt.Sprintf("SetChatData error: %v", err)
+		SendResponseLog("UsageHandler", s.Bot, s.Ctx, response)
+		return
+	}
+	session, err := s.AI.GetSession(userId)
+	if err != nil {
+		response.Text = fmt.Sprintf("AI.GetSession error: %v", err)
+		SendResponseLog("UsageHandler", s.Bot, s.Ctx, response)
+		return
+	}
+
+	globalUsage, sessionUsage, lastUsage, err := s.AI.GetUsage(
+		userId, session.Endpoint.ID, chatId, int64(threadId), *session.Model,
+	)
+	if err != nil {
+		response.Text = fmt.Sprintf("AI.GetUsage error: %v", err)
+		SendResponseLog("UsageHandler", s.Bot, s.Ctx, response)
+		return
+	}
+
+	globalUsagePromptSpeed := float64(globalUsage.PromptTokens) / (globalUsage.TimingPromptProcessing * 0.001)
+	globalUsageCompletionSpeed := float64(globalUsage.CompletionTokens) / (globalUsage.TimingTokenGeneration * 0.001)
+	sessionUsagePromptSpeed := float64(sessionUsage.PromptTokens) / (sessionUsage.TimingPromptProcessing * 0.001)
+	sessionUsageCompletionSpeed := float64(sessionUsage.CompletionTokens) / (sessionUsage.TimingTokenGeneration * 0.001)
+	lastUsagePromptSpeed := float64(lastUsage.PromptTokens) / (lastUsage.TimingPromptProcessing * 0.001)
+	lastUsageCompletionSpeed := float64(lastUsage.CompletionTokens) / (lastUsage.TimingTokenGeneration * 0.001)
+
+	response.Text = fmt.Sprintf(UsageMessage,
+		globalUsage.CompletionTokens, globalUsage.PromptTokens, globalUsage.TotalTokens,
+		globalUsage.TimingPromptProcessing, globalUsagePromptSpeed,
+		globalUsage.TimingTokenGeneration, globalUsageCompletionSpeed,
+
+		sessionUsage.CompletionTokens, sessionUsage.PromptTokens, sessionUsage.TotalTokens,
+		sessionUsage.TimingPromptProcessing, sessionUsagePromptSpeed,
+		sessionUsage.TimingTokenGeneration, sessionUsageCompletionSpeed,
+
+		lastUsage.CompletionTokens, lastUsage.PromptTokens, lastUsage.TotalTokens,
+		lastUsage.TimingPromptProcessing, lastUsagePromptSpeed,
+		lastUsage.TimingTokenGeneration, lastUsageCompletionSpeed,
+	)
+	SendResponseLog("UsageHandler", s.Bot, s.Ctx, response)
 }
 
 // TODO i don't like that chain approach, yet don't want to introduce enumerated dialog states

@@ -19,6 +19,16 @@ func DeleteMessageLog(funcName string, b *bot.Bot, ctx context.Context, chatId i
 	}
 }
 
+func SendChatActionLog(funcName string, b *bot.Bot, ctx context.Context, chatId int64, threadId int, action models.ChatAction) {
+	if _, err := b.SendChatAction(ctx, &bot.SendChatActionParams{
+		ChatID:          chatId,
+		MessageThreadID: threadId,
+		Action:          action,
+	}); err != nil {
+		log.Printf("%s Bot.SendChatAction error: %v", funcName, err)
+	}
+}
+
 func SendResponseLog(funcName string, b *bot.Bot, ctx context.Context, response *bot.SendMessageParams) *int {
 	msg, err := b.SendMessage(ctx, response)
 	if err != nil {

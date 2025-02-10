@@ -66,11 +66,19 @@ func (s *Service) Inference(userId, chatId, threadId int64, prompt string) (stri
 		return "", ErrEmptyLLMChoices
 	}
 	textResponse := response.Choices[0].Content
+	usage := response.Choices[0].GenerationInfo
 
 	err = s.UpdateHistory(
 		userId, session.Endpoint.ID, chatId, threadId, *session.Model,
 		llms.TextParts(llms.ChatMessageTypeAI, textResponse),
 	)
+	if err != nil {
+		return textResponse, err
+	}
 
+	err = s.UpdateUsage(
+		userId, session.Endpoint.ID, chatId, threadId, *session.Model,
+		usage,
+	)
 	return textResponse, err
 }

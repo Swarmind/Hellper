@@ -50,6 +50,7 @@ func NewService(token string, database *database.Handler, ai *ai.Service) (*Serv
 	b.RegisterHandler(bot.HandlerTypeMessageText, "/model", bot.MatchTypePrefix, service.ModelHandler)
 	b.RegisterHandler(bot.HandlerTypeMessageText, "/end", bot.MatchTypeExact, service.EndHandler)
 	b.RegisterHandler(bot.HandlerTypeMessageText, "/logout", bot.MatchTypeExact, service.LogoutHandler)
+	b.RegisterHandler(bot.HandlerTypeMessageText, "/usage", bot.MatchTypeExact, service.UsageHandler)
 
 	service.Bot = b
 

@@ -137,6 +137,8 @@ func (s *Service) RootHandler(ctx context.Context, b *bot.Bot, update *models.Up
 		return
 	}
 
+	SendChatActionLog("RootHandler", s.Bot, s.Ctx, chatId, threadId, models.ChatActionTyping)
+
 	text, err := s.AI.Inference(userId, chatId, int64(threadId), message)
 	if err != nil {
 		response.Text = fmt.Sprintf("AI.Inference error: %v", err)
@@ -145,5 +147,6 @@ func (s *Service) RootHandler(ctx context.Context, b *bot.Bot, update *models.Up
 	}
 
 	response.Text = text
+	response.ParseMode = models.ParseModeMarkdownV1
 	SendResponseLog("RootHandler", s.Bot, s.Ctx, response)
 }
