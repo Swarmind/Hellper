@@ -19,8 +19,8 @@ func (s Service) CreateTables() error {
 	_, err := s.DBHandler.DB.Exec(`
 		CREATE TABLE IF NOT EXISTS tg_session (
 			tg_user_id INT PRIMARY KEY,
-			chat_id INT,
-			thread_id INT,
+			chat_id BIGINT,
+			thread_id BIGINT,
 			is_forum BOOLEAN,
 			chat_type TEXT,
 			in_dialog BOOLEAN,
