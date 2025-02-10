@@ -147,7 +147,8 @@ func (s *Service) CreateTables() error {
 		    	tg_user_id = p_user_id AND
 		    	endpoint = p_endpoint_id AND
 		    	chat_id = p_chat_id AND
-		    	thread_id = p_thread_id;
+		    	thread_id = p_thread_id AND
+		    	model = p_model;
 		
 		    IF NOT FOUND THEN
 		        INSERT INTO chat_sessions
@@ -312,7 +313,7 @@ func (s *Service) GetUsage(
 	var globalUsage Usage
 	err := row.Scan(
 		&globalUsage.CompletionTokens, &globalUsage.PromptTokens,
-		&globalUsage.TotalTokens, &globalUsage.TotalTokens,
+		&globalUsage.TotalTokens, &globalUsage.ReasoningTokens,
 		&globalUsage.TimingTokenGeneration, &globalUsage.TimingPromptProcessing)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, nil, nil, err
@@ -329,11 +330,11 @@ func (s *Service) GetUsage(
     	  AND cs.chat_id = $3
     	  AND cs.thread_id = $4
     	  AND cs.model = $5
-	`, userId, endpointId, chatId, threadId, model) // Pass parameters
+	`, userId, endpointId, chatId, threadId, model)
 	var sessionUsage Usage
 	err = row.Scan(
 		&sessionUsage.CompletionTokens, &sessionUsage.PromptTokens,
-		&sessionUsage.TotalTokens, &sessionUsage.TotalTokens,
+		&sessionUsage.TotalTokens, &sessionUsage.ReasoningTokens,
 		&sessionUsage.TimingTokenGeneration, &sessionUsage.TimingPromptProcessing)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, nil, nil, err
@@ -350,15 +351,16 @@ func (s *Service) GetUsage(
     	  AND cs.chat_id = $3
     	  AND cs.thread_id = $4
     	  AND cs.model = $5
-	`, userId, endpointId, chatId, threadId, model) // Pass parameters
+	`, userId, endpointId, chatId, threadId, model)
 	var lastUsage Usage
 	err = row.Scan(
 		&lastUsage.CompletionTokens, &lastUsage.PromptTokens,
-		&lastUsage.TotalTokens, &lastUsage.TotalTokens,
+		&lastUsage.TotalTokens, &lastUsage.ReasoningTokens,
 		&lastUsage.TimingTokenGeneration, &lastUsage.TimingPromptProcessing)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, nil, nil, err
 	}
+
 	return &globalUsage, &sessionUsage, &lastUsage, nil
 }
 
