@@ -265,11 +265,11 @@ func (s *Service) UpdateUsage(
 	if val, ok := usage["ReasoningTokens"]; ok {
 		usageStruct.ReasoningTokens = val.(int)
 	}
-	if val, ok := usage["TimingPromptProcessing"]; ok {
-		usageStruct.TimingPromptProcessing = val.(float64)
-	}
 	if val, ok := usage["TimingTokenGeneration"]; ok {
 		usageStruct.TimingTokenGeneration = val.(float64)
+	}
+	if val, ok := usage["TimingPromptProcessing"]; ok {
+		usageStruct.TimingPromptProcessing = val.(float64)
 	}
 
 	_, err := s.DBHandler.DB.Exec(`
@@ -278,7 +278,7 @@ func (s *Service) UpdateUsage(
 		userId, endpointId, chatId, threadId, model,
 		usageStruct.CompletionTokens, usageStruct.PromptTokens,
 		usageStruct.TotalTokens, usageStruct.ReasoningTokens,
-		usageStruct.TimingPromptProcessing, usageStruct.TimingTokenGeneration,
+		usageStruct.TimingTokenGeneration, usageStruct.TimingPromptProcessing,
 	)
 	return err
 }
