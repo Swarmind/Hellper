@@ -104,6 +104,35 @@ func (s *Service) gatekeepMessage(userId int64, message *models.Message) (bool, 
 	return true, nil
 }
 
+func (s *Service) endHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
+	userId, chatId, threadId, isForum, chatType := update.Message.From.ID,
+		update.Message.Chat.ID,
+		update.Message.MessageThreadID,
+		update.Message.Chat.IsForum,
+		update.Message.Chat.Type
+	defer s.DeleteMessage(chatId, update.Message.ID)
+
+	response := CreateResponseMessageParams(chatId, threadId, isForum)
+	if err := s.SetChatData(userId, chatId, threadId, isForum, chatType); err != nil {
+		s.SendLogError(response, err)
+		return
+	}
+
+	if chatType == models.ChatTypePrivate {
+		response.Text = EndInPrivateMessage
+		s.SendMessage(response)
+		return
+	}
+
+	if err := s.SetInDialogState(userId, false); err != nil {
+		s.SendLogError(response, err)
+		return
+	}
+
+	response.Text = EndMessage
+	s.SendMessage(response)
+}
+
 func (s *Service) endpointHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	userId, chatId, threadId, isForum, chatType := update.Message.From.ID,
 		update.Message.Chat.ID,
@@ -324,7 +353,14 @@ func (s *Service) clearHandler(ctx context.Context, b *bot.Bot, update *models.U
 		s.SendLogError(response, err)
 		return
 	}
-	session, err := s.AI.GetSession(userId, ai.ChatSessionType)
+
+	clearArgs := strings.Fields(strings.TrimSpace(strings.TrimPrefix(update.Message.Text, "/clear")))
+	sessionType := ai.ChatSessionType
+	if len(clearArgs) > 0 {
+		sessionType = clearArgs[0]
+	}
+
+	session, err := s.AI.GetSession(userId, sessionType)
 	if err != nil {
 		s.SendLogError(response, err)
 		return
@@ -343,35 +379,6 @@ func (s *Service) clearHandler(ctx context.Context, b *bot.Bot, update *models.U
 	s.SendMessage(response)
 }
 
-func (s *Service) endHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
-	userId, chatId, threadId, isForum, chatType := update.Message.From.ID,
-		update.Message.Chat.ID,
-		update.Message.MessageThreadID,
-		update.Message.Chat.IsForum,
-		update.Message.Chat.Type
-	defer s.DeleteMessage(chatId, update.Message.ID)
-
-	response := CreateResponseMessageParams(chatId, threadId, isForum)
-	if err := s.SetChatData(userId, chatId, threadId, isForum, chatType); err != nil {
-		s.SendLogError(response, err)
-		return
-	}
-
-	if chatType == models.ChatTypePrivate {
-		response.Text = EndInPrivateMessage
-		s.SendMessage(response)
-		return
-	}
-
-	if err := s.SetInDialogState(userId, false); err != nil {
-		s.SendLogError(response, err)
-		return
-	}
-
-	response.Text = EndMessage
-	s.SendMessage(response)
-}
-
 func (s *Service) logoutHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	userId, chatId, threadId, isForum, chatType := update.Message.From.ID,
 		update.Message.Chat.ID,
@@ -386,7 +393,13 @@ func (s *Service) logoutHandler(ctx context.Context, b *bot.Bot, update *models.
 		return
 	}
 
-	session, err := s.AI.GetSession(userId, ai.ChatSessionType)
+	logoutArgs := strings.Fields(strings.TrimSpace(strings.TrimPrefix(update.Message.Text, "/logout")))
+	sessionType := ai.ChatSessionType
+	if len(logoutArgs) > 0 {
+		sessionType = logoutArgs[0]
+	}
+
+	session, err := s.AI.GetSession(userId, sessionType)
 	if err != nil {
 		s.SendLogError(response, err)
 		return
@@ -423,7 +436,14 @@ func (s *Service) usageHandler(ctx context.Context, b *bot.Bot, update *models.U
 		s.SendLogError(response, err)
 		return
 	}
-	session, err := s.AI.GetSession(userId, ai.ChatSessionType)
+
+	usageArgs := strings.Fields(strings.TrimSpace(strings.TrimPrefix(update.Message.Text, "/usage")))
+	sessionType := ai.ChatSessionType
+	if len(usageArgs) > 0 {
+		sessionType = usageArgs[0]
+	}
+
+	session, err := s.AI.GetSession(userId, sessionType)
 	if err != nil {
 		s.SendLogError(response, err)
 		return

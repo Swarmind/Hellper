@@ -59,12 +59,12 @@ func NewService(token string, database *database.Handler, ai *ai.Service, log *l
 		return nil, err
 	}
 
-	b.RegisterHandler(bot.HandlerTypeMessageText, "/clear", bot.MatchTypeExact, service.clearHandler)
+	b.RegisterHandler(bot.HandlerTypeMessageText, "/clear", bot.MatchTypePrefix, service.clearHandler)
 	b.RegisterHandler(bot.HandlerTypeMessageText, "/endpoint", bot.MatchTypePrefix, service.endpointHandler)
 	b.RegisterHandler(bot.HandlerTypeMessageText, "/model", bot.MatchTypePrefix, service.modelHandler)
 	b.RegisterHandler(bot.HandlerTypeMessageText, "/end", bot.MatchTypeExact, service.endHandler)
-	b.RegisterHandler(bot.HandlerTypeMessageText, "/logout", bot.MatchTypeExact, service.logoutHandler)
-	b.RegisterHandler(bot.HandlerTypeMessageText, "/usage", bot.MatchTypeExact, service.usageHandler)
+	b.RegisterHandler(bot.HandlerTypeMessageText, "/logout", bot.MatchTypePrefix, service.logoutHandler)
+	b.RegisterHandler(bot.HandlerTypeMessageText, "/usage", bot.MatchTypePrefix, service.usageHandler)
 
 	service.Bot = b
 
