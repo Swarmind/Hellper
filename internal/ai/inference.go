@@ -12,8 +12,8 @@ var ErrNoModelSpecified = errors.New("no model specified")
 var ErrNoEndpointSpecified = errors.New("no endpoint specified")
 var ErrEmptyLLMChoices = errors.New("empty llm choices in response")
 
-func (s *Service) Inference(userId, chatId, threadId int64, prompt string) (string, error) {
-	session, err := s.GetSession(userId)
+func (s *Service) Inference(userId, chatId int64, threadId int, prompt string) (string, error) {
+	session, err := s.GetSession(userId, ChatSessionType)
 	if err != nil {
 		return "", err
 	}
@@ -42,14 +42,14 @@ func (s *Service) Inference(userId, chatId, threadId int64, prompt string) (stri
 	}
 
 	err = s.UpdateHistory(
-		userId, session.Endpoint.ID, chatId, threadId, *session.Model,
+		userId, session.Endpoint.ID, chatId, int64(threadId), *session.Model,
 		llms.TextParts(llms.ChatMessageTypeHuman, prompt),
 	)
 	if err != nil {
 		return "", err
 	}
 	history, err := s.GetHistory(
-		userId, session.Endpoint.ID, chatId, threadId, *session.Model,
+		userId, session.Endpoint.ID, chatId, int64(threadId), *session.Model,
 	)
 	if err != nil {
 		return "", err
@@ -69,7 +69,7 @@ func (s *Service) Inference(userId, chatId, threadId int64, prompt string) (stri
 	usage := response.Choices[0].GenerationInfo
 
 	err = s.UpdateHistory(
-		userId, session.Endpoint.ID, chatId, threadId, *session.Model,
+		userId, session.Endpoint.ID, chatId, int64(threadId), *session.Model,
 		llms.TextParts(llms.ChatMessageTypeAI, textResponse),
 	)
 	if err != nil {
@@ -77,7 +77,7 @@ func (s *Service) Inference(userId, chatId, threadId int64, prompt string) (stri
 	}
 
 	err = s.UpdateUsage(
-		userId, session.Endpoint.ID, chatId, threadId, *session.Model,
+		userId, session.Endpoint.ID, chatId, int64(threadId), *session.Model,
 		usage,
 	)
 	return textResponse, err

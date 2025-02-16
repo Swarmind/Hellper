@@ -7,6 +7,7 @@ import (
 )
 
 type AISession struct {
+	Type     string
 	Model    *string
 	Endpoint *Endpoint
 }
@@ -57,9 +58,11 @@ func (s *Service) CreateTables() error {
 	}
 	_, err = s.DBHandler.DB.Exec(`
 		CREATE TABLE IF NOT EXISTS ai_sessions (
-			tg_user_id BIGINT PRIMARY KEY,
+			tg_user_id BIGINT,
+			session_type TEXT NOT NULL,
 			model TEXT,
-			endpoint INT REFERENCES endpoints(id)	
+			endpoint INT REFERENCES endpoints(id),
+			PRIMARY KEY (tg_user_id, session_type)
 		)`)
 	if err != nil {
 		return err
@@ -419,7 +422,7 @@ func (s *Service) DropHistory(
 	return err
 }
 
-func (s *Service) UpdateModel(userId int64, model *string) error {
+func (s *Service) UpdateModel(userId int64, sessionType string, model *string) error {
 	var modelValue interface{}
 	if model != nil {
 		modelValue = *model
@@ -427,16 +430,16 @@ func (s *Service) UpdateModel(userId int64, model *string) error {
 		modelValue = nil
 	}
 	_, err := s.DBHandler.DB.Exec(`INSERT INTO ai_sessions
-			(tg_user_id, model)
+			(tg_user_id, session_type, model)
 		VALUES
-			($1, $2)
-		ON CONFLICT(tg_user_id) DO UPDATE SET
-			model = $2
-		`, userId, modelValue)
+			($1, $2, $3)
+		ON CONFLICT(tg_user_id, session_type) DO UPDATE SET
+			model = $3
+		`, userId, sessionType, modelValue)
 	return err
 }
 
-func (s *Service) UpdateEndpoint(userId int64, endpointId *int64) error {
+func (s *Service) UpdateEndpoint(userId int64, sessionType string, endpointId *int64) error {
 	var endpointIdValue interface{}
 	if endpointId != nil {
 		endpointIdValue = *endpointId
@@ -444,21 +447,22 @@ func (s *Service) UpdateEndpoint(userId int64, endpointId *int64) error {
 		endpointIdValue = nil
 	}
 	_, err := s.DBHandler.DB.Exec(`INSERT INTO ai_sessions
-			(tg_user_id, endpoint)
+			(tg_user_id, session_type, endpoint)
 		VALUES
-			($1, $2)
-		ON CONFLICT(tg_user_id) DO UPDATE SET
-			endpoint = $2
-		`, userId, endpointIdValue)
+			($1, $2, $3)
+		ON CONFLICT(tg_user_id, session_type) DO UPDATE SET
+			endpoint = $3
+		`, userId, sessionType, endpointIdValue)
 	return err
 }
 
-func (s *Service) GetSession(userId int64) (AISession, error) {
+func (s *Service) GetSession(userId int64, sessionType string) (AISession, error) {
 	var model, endpointName, endpointURL sql.NullString
 	var endpointId, endpointAuthMethod sql.NullInt64
 	var session AISession
 
 	err := s.DBHandler.DB.QueryRow(`SELECT
+			lt.session_type,
 			lt.model,
 			rt.id,
 			rt.name,
@@ -468,7 +472,9 @@ func (s *Service) GetSession(userId int64) (AISession, error) {
 			ai_sessions lt
 		LEFT JOIN
 			endpoints rt ON lt.endpoint = rt.id
-		WHERE tg_user_id = $1`, userId).Scan(
+		WHERE tg_user_id = $1 AND session_type = $2
+		`, userId, sessionType).Scan(
+		&session.Type,
 		&model, &endpointId, &endpointName,
 		&endpointURL, &endpointAuthMethod,
 	)

@@ -8,6 +8,10 @@ import (
 	"github.com/tmc/langchaingo/llms/openai"
 )
 
+const ChatSessionType = "chat"
+const ImageSessionType = "image"
+const VoiceSessionType = "voice"
+
 var ErrHandlerNotFound = errors.New("handler for that user id is not found")
 var ErrHandlerCast = errors.New("failed to cast LLM handler")
 

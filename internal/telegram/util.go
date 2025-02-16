@@ -2,9 +2,11 @@ package telegram
 
 import (
 	"context"
+	"fmt"
 	"hellper/internal/ai"
 	"log"
 	"strconv"
+	"strings"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
@@ -38,13 +40,14 @@ func SendResponseLog(funcName string, b *bot.Bot, ctx context.Context, response 
 	return &msg.ID
 }
 
-func CreateEndpointsMarkup(endpoints []ai.Endpoint) models.InlineKeyboardMarkup {
+func CreateEndpointsMarkup(endpoints []ai.Endpoint, sessionType string) models.InlineKeyboardMarkup {
 	buttons := [][]models.InlineKeyboardButton{}
 	for _, endpoint := range endpoints {
 		buttons = append(buttons, []models.InlineKeyboardButton{
 			{
-				Text:         endpoint.Name,
-				CallbackData: "endpoint_" + strconv.FormatInt(endpoint.ID, 10),
+				Text: endpoint.Name,
+				CallbackData: fmt.Sprintf("endpoint_%s_%s",
+					sessionType, strconv.FormatInt(endpoint.ID, 10)),
 			},
 		})
 	}
@@ -54,13 +57,13 @@ func CreateEndpointsMarkup(endpoints []ai.Endpoint) models.InlineKeyboardMarkup 
 	}
 }
 
-func CreateModelsMarkup(llmModels []string) models.InlineKeyboardMarkup {
+func CreateModelsMarkup(llmModels []string, sessionType string) models.InlineKeyboardMarkup {
 	buttons := [][]models.InlineKeyboardButton{}
 	for _, model := range llmModels {
 		buttons = append(buttons, []models.InlineKeyboardButton{
 			{
 				Text:         model,
-				CallbackData: "model_" + model,
+				CallbackData: fmt.Sprintf("model_%s_%s", sessionType, model),
 			},
 		})
 	}
@@ -81,4 +84,47 @@ func CreateResponseMessageParams(chatId int64, threadId int, isForum bool) *bot.
 			ChatID: chatId,
 		}
 	}
+}
+
+func CreateMessageBuffer(message *models.Message) []Message {
+	messageBuffer := []Message{}
+
+	messageText, messageCaption := message.Text, message.Caption
+	messagePhotoSizes, messageDocument := message.Photo, message.Document
+	messageVoice := message.Voice
+
+	if messageText != "" {
+		messageBuffer = append(messageBuffer, Message{
+			Type:    ai.ChatSessionType,
+			Message: messageText,
+		})
+	}
+	if messageCaption != "" {
+		messageBuffer = append(messageBuffer, Message{
+			Type:    ai.ChatSessionType,
+			Message: messageCaption,
+		})
+	}
+	if len(messagePhotoSizes) > 0 {
+		// Telegram sends ~4 different sizes for the same photo, ranged by size
+		// Using the last the most big one
+		messageBuffer = append(messageBuffer, Message{
+			Type:    ai.ImageSessionType,
+			Message: messagePhotoSizes[len(messagePhotoSizes)-1].FileID,
+		})
+	}
+	if messageDocument != nil && strings.HasPrefix(messageDocument.MimeType, "image") {
+		messageBuffer = append(messageBuffer, Message{
+			Type:    ai.ImageSessionType,
+			Message: messageDocument.FileID,
+		})
+	}
+	if messageVoice != nil {
+		messageBuffer = append(messageBuffer, Message{
+			Type:    ai.VoiceSessionType,
+			Message: messageVoice.FileID,
+		})
+	}
+
+	return messageBuffer
 }
