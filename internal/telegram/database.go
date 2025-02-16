@@ -20,7 +20,7 @@ type Message struct {
 	Type    string
 }
 
-func (s Service) CreateTables() error {
+func (s *Service) CreateTables() error {
 	_, err := s.DBHandler.DB.Exec(`
 		CREATE TABLE IF NOT EXISTS tg_sessions (
 			tg_user_id INT PRIMARY KEY,

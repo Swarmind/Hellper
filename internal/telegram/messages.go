@@ -2,11 +2,9 @@ package telegram
 
 const TokenInputMessage = "Please enter the token for %s endpoint:"
 
-const EndpointNotFoundMessage = "Endpoint with that name not found"
 const EndpointUsingMessage = "Endpoint %s selected"
 const EndpointSelectMessage = "Select endpoint for %s type messages using keyboard below"
 
-const ModelNotFoundMessage = "Model with that name not found"
 const ModelUsingMessage = "Model %s selected"
 const ModelSelectMessage = "Select model for %s type messages using keyboard below"
 

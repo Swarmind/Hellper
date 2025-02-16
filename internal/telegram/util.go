@@ -1,44 +1,14 @@
 package telegram
 
 import (
-	"context"
 	"fmt"
 	"hellper/internal/ai"
-	"log"
 	"strconv"
 	"strings"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 )
-
-func DeleteMessageLog(funcName string, b *bot.Bot, ctx context.Context, chatId int64, messageId int) {
-	if _, err := b.DeleteMessage(ctx, &bot.DeleteMessageParams{
-		ChatID:    chatId,
-		MessageID: int(messageId),
-	}); err != nil {
-		log.Printf("%s Bot.SendMessage error: %v", funcName, err)
-	}
-}
-
-func SendChatActionLog(funcName string, b *bot.Bot, ctx context.Context, chatId int64, threadId int, action models.ChatAction) {
-	if _, err := b.SendChatAction(ctx, &bot.SendChatActionParams{
-		ChatID:          chatId,
-		MessageThreadID: threadId,
-		Action:          action,
-	}); err != nil {
-		log.Printf("%s Bot.SendChatAction error: %v", funcName, err)
-	}
-}
-
-func SendResponseLog(funcName string, b *bot.Bot, ctx context.Context, response *bot.SendMessageParams) *int {
-	msg, err := b.SendMessage(ctx, response)
-	if err != nil {
-		log.Printf("%s Bot.SendMessage error: %v", funcName, err)
-		return nil
-	}
-	return &msg.ID
-}
 
 func CreateEndpointsMarkup(endpoints []ai.Endpoint, sessionType string) models.InlineKeyboardMarkup {
 	buttons := [][]models.InlineKeyboardButton{}

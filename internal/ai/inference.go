@@ -7,7 +7,6 @@ import (
 	"github.com/tmc/langchaingo/llms"
 )
 
-// Should not be reachable
 var ErrNoModelSpecified = errors.New("no model specified")
 var ErrNoEndpointSpecified = errors.New("no endpoint specified")
 var ErrEmptyLLMChoices = errors.New("empty llm choices in response")

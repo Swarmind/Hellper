@@ -1,16 +1,18 @@
 package telegram
 
 import (
+	"errors"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/go-telegram/bot"
 )
 
-const MessageFireTimeout = time.Second * 3
+var ErrCastMediaGroup = errors.New("cast value to MediaGroupJob")
 
-type MediaGroupJob struct {
+const messageFireTimeout = time.Second * 3
+
+type mediaGroupJob struct {
 	UserID        int64
 	ChatID        int64
 	ThreadID      int
@@ -19,7 +21,7 @@ type MediaGroupJob struct {
 	CreatedAt     time.Time
 }
 
-func (s *Service) UpsertMediaGroupJob(
+func (s *Service) upsertMediaGroupJob(
 	userId, chatId int64, threadId int,
 	messageMediaGroupId string,
 	response *bot.SendMessageParams,
@@ -27,13 +29,13 @@ func (s *Service) UpsertMediaGroupJob(
 ) error {
 	jobValue, ok := s.MediaGroupMap.Load(messageMediaGroupId)
 	if ok {
-		job, ok := jobValue.(MediaGroupJob)
+		job, ok := jobValue.(mediaGroupJob)
 		if !ok {
 			return fmt.Errorf("cast value to MediaGroupJob")
 		}
 		*job.MessageBuffer = append(*job.MessageBuffer, messageBuffer...)
 	} else {
-		s.MediaGroupMap.Store(messageMediaGroupId, MediaGroupJob{
+		s.MediaGroupMap.Store(messageMediaGroupId, mediaGroupJob{
 			UserID:        userId,
 			ChatID:        chatId,
 			ThreadID:      threadId,
@@ -45,22 +47,21 @@ func (s *Service) UpsertMediaGroupJob(
 	return nil
 }
 
-func (s *Service) Worker() {
+func (s *Service) mediaGroupWorker() {
 	for {
 		s.MediaGroupMap.Range(func(key, value interface{}) bool {
-			job, ok := value.(MediaGroupJob)
+			job, ok := value.(mediaGroupJob)
 			if !ok {
-				log.Println("Failed to cast value to MediaGroupJob!")
+				s.Log.LogFormatError(ErrCastMediaGroup, 1)
 				return true
 			}
 
-			if time.Since(job.CreatedAt) > MessageFireTimeout {
+			if time.Since(job.CreatedAt) > messageFireTimeout {
 				if err := s.ProcessMessageBuffer(
 					job.UserID, job.ChatID, job.ThreadID, nil,
 					job.Response, *job.MessageBuffer,
 				); err != nil {
-					job.Response.Text = fmt.Sprintf("ProcessMessageBuffer error: %v", err)
-					SendResponseLog("Worker", s.Bot, s.Ctx, job.Response)
+					s.SendLogError(job.Response, err)
 				}
 				s.MediaGroupMap.Delete(key)
 			}

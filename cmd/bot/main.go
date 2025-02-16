@@ -4,6 +4,7 @@ import (
 	"hellper/internal/ai"
 	"hellper/internal/database"
 	"hellper/internal/telegram"
+	logwrapper "hellper/pkg/log_wrapper"
 	"log"
 	"os"
 
@@ -11,8 +12,10 @@ import (
 )
 
 func main() {
+	logger := log.New(os.Stderr, "Hellper ", log.LstdFlags)
+
 	if err := godotenv.Load(); err != nil {
-		log.Printf("failed to load .env: %v", err)
+		logger.Printf("failed to load .env: %v", err)
 	}
 
 	db, err := database.NewHandler(loadEnv("DB_CONNECTION"))
@@ -23,7 +26,12 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to create AI service: %v", err)
 	}
-	tgBot, err := telegram.NewService(loadEnv("BOT_TOKEN"), db, ai)
+	tgBot, err := telegram.NewService(
+		loadEnv("BOT_TOKEN"),
+		db, ai,
+		&logwrapper.Service{
+			Log: logger,
+		})
 	if err != nil {
 		log.Fatalf("failed to create telegram service: %v", err)
 	}
