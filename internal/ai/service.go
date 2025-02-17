@@ -10,6 +10,7 @@ import (
 
 const ChatSessionType = "chat"
 const ImageSessionType = "image"
+const VisionSessionType = "vision"
 const VoiceSessionType = "voice"
 
 var ErrHandlerNotFound = errors.New("handler for that user id is not found")

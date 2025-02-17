@@ -12,8 +12,8 @@ func (s *Service) ProcessConfigFields(userId int64, fields []string) (models.Inl
 
 	if len(fields) == 3 {
 		switch fields[2] {
-		case "externalimage":
-			globalConfig.ExternalImageSession = !globalConfig.ExternalImageSession
+		case "externalvision":
+			globalConfig.ExternalVisionSession = !globalConfig.ExternalVisionSession
 		case "externalvoice":
 			globalConfig.ExternalVoiceSession = !globalConfig.ExternalVoiceSession
 		case "voicetranscription":

@@ -16,7 +16,7 @@ type User struct {
 }
 
 type GlobalConfig struct {
-	ExternalImageSession      bool
+	ExternalVisionSession     bool
 	ExternalVoiceSession      bool
 	VoiceSessionTranscription bool
 }
@@ -57,7 +57,7 @@ func (s *Service) CreateTables() error {
 	_, err = s.DBHandler.DB.Exec(`
 		CREATE TABLE IF NOT EXISTS global_configs (
 			tg_user_id INT PRIMARY KEY,
-			external_image_session BOOLEAN DEFAULT TRUE,
+			external_vision_session BOOLEAN DEFAULT TRUE,
 			external_voice_session BOOLEAN DEFAULT TRUE,
 			voice_session_transcription BOOLEAN DEFAULT TRUE
 		)`)
@@ -88,13 +88,13 @@ func (s *Service) GetGlobalConfig(userId int64) (GlobalConfig, error) {
 	globalConfig := GlobalConfig{}
 
 	err := s.DBHandler.DB.QueryRow(`SELECT
-		external_image_session,
+		external_vision_session,
 		external_voice_session,
 		voice_session_transcription
 		FROM global_configs
 		WHERE tg_user_id = $1
 	`, userId).Scan(
-		&globalConfig.ExternalImageSession,
+		&globalConfig.ExternalVisionSession,
 		&globalConfig.ExternalVoiceSession,
 		&globalConfig.VoiceSessionTranscription,
 	)
@@ -109,15 +109,15 @@ func (s *Service) GetGlobalConfig(userId int64) (GlobalConfig, error) {
 
 func (s *Service) SetGlobalConfig(userId int64, globalConfig GlobalConfig) error {
 	_, err := s.DBHandler.DB.Exec(`INSERT INTO global_configs
-			(tg_user_id, external_image_session, external_voice_session, voice_session_transcription)
+			(tg_user_id, external_vision_session, external_voice_session, voice_session_transcription)
 		VALUES
 			($1, $2, $3, $4)
 		ON CONFLICT(tg_user_id) DO UPDATE SET
-			external_image_session = $2,
+			external_vision_session = $2,
 			external_voice_session = $3,
 			voice_session_transcription = $4
 		`, userId,
-		globalConfig.ExternalImageSession,
+		globalConfig.ExternalVisionSession,
 		globalConfig.ExternalVoiceSession,
 		globalConfig.VoiceSessionTranscription)
 	return err

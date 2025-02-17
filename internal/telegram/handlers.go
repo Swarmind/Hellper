@@ -14,6 +14,7 @@ import (
 )
 
 var ErrWrongCallbackData = errors.New("wrong callback data")
+var ErrEmptyPrompt = errors.New("empty prompt")
 
 func (s *Service) RootHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	if update.Message == nil || update.Message.From == nil {
@@ -102,6 +103,41 @@ func (s *Service) gatekeepMessage(userId int64, message *models.Message) (bool, 
 	}
 
 	return true, nil
+}
+
+func (s *Service) ImageHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
+	userId, messageId, chatId, threadId, isForum, chatType := update.Message.From.ID,
+		update.Message.ID,
+		update.Message.Chat.ID,
+		update.Message.MessageThreadID,
+		update.Message.Chat.IsForum,
+		update.Message.Chat.Type
+
+	response := CreateResponseMessageParams(chatId, threadId, isForum)
+	if err := s.SetChatData(userId, chatId, threadId, isForum, chatType); err != nil {
+		s.SendLogError(response, err)
+		return
+	}
+
+	imagePrompt := strings.TrimSpace(strings.TrimPrefix(update.Message.Text, "/image"))
+	if imagePrompt == "" {
+		s.SendLogError(response, ErrEmptyPrompt)
+	}
+
+	if err := s.ProcessMessageBuffer(
+		userId, chatId, threadId, &messageId, response,
+		[]Message{
+			{
+				Type:    ai.ImageSessionType,
+				Message: imagePrompt,
+				ID:      messageId,
+			},
+		},
+	); err != nil {
+		response.Text = fmt.Sprintf("ProcessMessageBuffer error: %v", err)
+		s.SendLogError(response, err)
+		return
+	}
 }
 
 func (s *Service) ConfigHandler(ctx context.Context, b *bot.Bot, update *models.Update) {

@@ -72,6 +72,8 @@ func NewService(token string, database *database.Handler, ai *ai.Service, log *l
 	b.RegisterHandler(bot.HandlerTypeMessageText, "/logout", bot.MatchTypePrefix, service.LogoutHandler)
 	b.RegisterHandler(bot.HandlerTypeMessageText, "/usage", bot.MatchTypePrefix, service.UsageHandler)
 
+	b.RegisterHandler(bot.HandlerTypeMessageText, "/image", bot.MatchTypePrefix, service.ImageHandler)
+
 	service.Bot = b
 
 	return &service, nil
@@ -103,7 +105,7 @@ func (s *Service) ProcessMessageBuffer(
 		}
 	}
 
-	ok, err := s.checkSetupAISession(
+	ok, err := s.CheckSetupAISession(
 		userId, messageId, response, messageBuffer, messageText)
 	if err != nil {
 		return err
@@ -117,8 +119,15 @@ func (s *Service) ProcessMessageBuffer(
 		return err
 	}
 
-	// Set typing animation
-	s.SendChatAction(chatId, response.MessageThreadID, models.ChatActionTyping)
+	// Set chat action animation
+	chatAction := models.ChatActionTyping
+	for _, message := range messageBuffer {
+		if message.Type == ai.ImageSessionType {
+			chatAction = models.ChatActionUploadPhoto
+			break
+		}
+	}
+	s.SendChatAction(chatId, response.MessageThreadID, chatAction)
 
 	messageContent := llms.MessageContent{
 		Role: llms.ChatMessageTypeHuman,
@@ -129,7 +138,7 @@ func (s *Service) ProcessMessageBuffer(
 		case ai.ChatSessionType:
 			messageContent.Parts = append(messageContent.Parts, llms.TextPart(message.Message))
 
-		case ai.ImageSessionType:
+		case ai.VisionSessionType:
 			fileBytes, err := s.GetFileBytes(message.Message)
 			if err != nil {
 				return err
@@ -137,9 +146,9 @@ func (s *Service) ProcessMessageBuffer(
 			imageUrlPart := llms.ImageURLPart(
 				llms.BinaryPart(message.MIME, fileBytes).String(),
 			)
-			if globalConfig.ExternalImageSession {
+			if globalConfig.ExternalVisionSession {
 				imageDescriptionText, err := s.AI.OneShotInference(
-					userId, chatId, threadId, ai.ImageSessionType,
+					userId, chatId, threadId, ai.VisionSessionType,
 					llms.MessageContent{
 						Role: llms.ChatMessageTypeHuman,
 						Parts: []llms.ContentPart{
@@ -173,9 +182,7 @@ func (s *Service) ProcessMessageBuffer(
 			if globalConfig.ExternalVoiceSession {
 				voiceTranscriptionText := ""
 				if globalConfig.VoiceSessionTranscription {
-					voiceTranscriptionText, err = s.AI.AudioTranscription(
-						userId, chatId, threadId, audioPart,
-					)
+					voiceTranscriptionText, err = s.AI.AudioTranscription(userId, audioPart)
 					if err != nil {
 						return err
 					}
@@ -200,6 +207,38 @@ func (s *Service) ProcessMessageBuffer(
 				continue
 			}
 			messageContent.Parts = append(messageContent.Parts, audioPart)
+
+		case ai.ImageSessionType:
+			imageUrls, err := s.AI.ImageGeneration(userId, message.Message)
+			if err != nil {
+				return err
+			}
+
+			if len(imageUrls) > 1 {
+				media := []models.InputMedia{}
+
+				for _, url := range imageUrls {
+					media = append(media, &models.InputMediaPhoto{
+						Media: url,
+					})
+				}
+
+				_, err = s.Bot.SendMediaGroup(s.Ctx, &bot.SendMediaGroupParams{
+					ChatID:          chatId,
+					MessageThreadID: threadId,
+					Media:           media,
+				})
+				return err
+			}
+
+			_, err = s.Bot.SendPhoto(s.Ctx, &bot.SendPhotoParams{
+				ChatID:          chatId,
+				MessageThreadID: threadId,
+				Photo: &models.InputFileString{
+					Data: imageUrls[0],
+				},
+			})
+			return err
 		}
 	}
 

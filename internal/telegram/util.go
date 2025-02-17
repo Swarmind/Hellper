@@ -16,9 +16,9 @@ func CreateConfigMarkup(globalConfig GlobalConfig) models.InlineKeyboardMarkup {
 			{
 				Text: fmt.Sprintf(
 					"Use separate AI Session for Images: %t",
-					globalConfig.ExternalImageSession,
+					globalConfig.ExternalVisionSession,
 				),
-				CallbackData: "config_global_externalimage",
+				CallbackData: "config_global_externalvision",
 			},
 		},
 		{
@@ -125,7 +125,7 @@ func CreateMessageBuffer(message *models.Message) []Message {
 		bigPhotoSize := messagePhotoSizes[len(messagePhotoSizes)-1]
 
 		messageBuffer = append(messageBuffer, Message{
-			Type:    ai.ImageSessionType,
+			Type:    ai.VisionSessionType,
 			Message: bigPhotoSize.FileID,
 			// Default MIME type for compressed photos is image/jpeg
 			MIME: "image/jpeg",
@@ -134,7 +134,7 @@ func CreateMessageBuffer(message *models.Message) []Message {
 	}
 	if messageDocument != nil && strings.HasPrefix(messageDocument.MimeType, "image") {
 		messageBuffer = append(messageBuffer, Message{
-			Type:    ai.ImageSessionType,
+			Type:    ai.VisionSessionType,
 			Message: messageDocument.FileID,
 			MIME:    messageDocument.MimeType,
 			ID:      message.ID,

@@ -10,7 +10,7 @@ import (
 	"github.com/go-telegram/bot"
 )
 
-func (s *Service) checkSetupAISession(
+func (s *Service) CheckSetupAISession(
 	userId int64, updateMessageId *int,
 	response *bot.SendMessageParams,
 	messageBuffer []Message, updateMessageText string,
@@ -43,7 +43,7 @@ func (s *Service) checkSetupAISession(
 
 	sessionTypes := []string{}
 	for _, message := range bufferedMessages {
-		if (!globalConfig.ExternalImageSession && message.Type == ai.ImageSessionType) ||
+		if (!globalConfig.ExternalVisionSession && message.Type == ai.VisionSessionType) ||
 			(!globalConfig.ExternalVoiceSession && message.Type == ai.VoiceSessionType) {
 			continue
 		}
