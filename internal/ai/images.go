@@ -46,8 +46,8 @@ func (s *Service) ImageGeneration(
 	requestBody := ImageGenerationRequest{
 		Model:  *session.Model,
 		Prompt: prompt,
-		N:      2,
-		Size:   "256x256",
+		N:      1,
+		Size:   "1024x1024",
 	}
 
 	requestBodyBytes, err := json.Marshal(requestBody)
