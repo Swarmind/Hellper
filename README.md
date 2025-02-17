@@ -2,6 +2,7 @@
 Telegram bot for OpenAI endpoints
 
 # Setup
+ - install the sox library (brew install sox, apt install sox)
  - put bot token and modify db connection if needed in the `.env`
  - run database (there are postgres set up in compose.yml) `docker compose up -d`
  - run bot `go run cmd/bot/main.go`

@@ -1,6 +1,8 @@
 FROM golang:latest
 LABEL maintainer="mintyleaf <mintyleafdev@gmail.com>"
 
+RUN apt-get update && apt-get install -y sox
+
 WORKDIR /app
 
 COPY go.mod go.sum ./
