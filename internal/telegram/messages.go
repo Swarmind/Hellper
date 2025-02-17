@@ -2,11 +2,13 @@ package telegram
 
 const TokenInputMessage = "Please enter the token for %s endpoint:"
 
+const ConfigMessage = "You can configure usage of external sessions for voice and images using buttons below:"
+
 const EndpointUsingMessage = "Endpoint %s selected"
-const EndpointSelectMessage = "Select endpoint for %s type messages using keyboard below"
+const EndpointSelectMessage = "Select endpoint for %s type messages using buttons below:"
 
 const ModelUsingMessage = "Model %s selected"
-const ModelSelectMessage = "Select model for %s type messages using keyboard below"
+const ModelSelectMessage = "Select model for %s type messages using buttons below:"
 
 const ClearMessage = "Message history cleared"
 

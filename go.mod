@@ -15,4 +15,4 @@ require (
 	github.com/pkoukk/tiktoken-go v0.1.6 // indirect
 )
 
-replace github.com/tmc/langchaingo v0.1.13-pre.1 => github.com/Swarmind/langchaingo v0.0.1
+replace github.com/tmc/langchaingo v0.1.13-pre.1 => github.com/Swarmind/langchaingo v0.0.5

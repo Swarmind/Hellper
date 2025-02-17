@@ -3,17 +3,20 @@ package telegram
 import (
 	"context"
 	"errors"
-	"fmt"
 	"hellper/internal/ai"
 	"hellper/internal/database"
+	audioconversion "hellper/pkg/audio_conversion"
 	logwrapper "hellper/pkg/log_wrapper"
-	"log"
+	"io"
+	"net/http"
 	"os"
 	"os/signal"
+	"slices"
 	"sync"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
+	"github.com/tmc/langchaingo/llms"
 )
 
 var ErrNonTextMessage = errors.New("no text message while awaiting token input")
@@ -49,9 +52,10 @@ func NewService(token string, database *database.Handler, ai *ai.Service, log *l
 	}
 
 	opts := []bot.Option{
-		bot.WithDefaultHandler(service.rootHandler),
-		bot.WithCallbackQueryDataHandler("model", bot.MatchTypePrefix, service.modelCallbackHandler),
-		bot.WithCallbackQueryDataHandler("endpoint", bot.MatchTypePrefix, service.endpointCallbackHandler),
+		bot.WithDefaultHandler(service.RootHandler),
+		bot.WithCallbackQueryDataHandler("model", bot.MatchTypePrefix, service.ModelCallbackHandler),
+		bot.WithCallbackQueryDataHandler("endpoint", bot.MatchTypePrefix, service.EndpointCallbackHandler),
+		bot.WithCallbackQueryDataHandler("config", bot.MatchTypePrefix, service.ConfigCallbackHandler),
 	}
 
 	b, err := bot.New(token, opts...)
@@ -59,12 +63,14 @@ func NewService(token string, database *database.Handler, ai *ai.Service, log *l
 		return nil, err
 	}
 
-	b.RegisterHandler(bot.HandlerTypeMessageText, "/clear", bot.MatchTypePrefix, service.clearHandler)
-	b.RegisterHandler(bot.HandlerTypeMessageText, "/endpoint", bot.MatchTypePrefix, service.endpointHandler)
-	b.RegisterHandler(bot.HandlerTypeMessageText, "/model", bot.MatchTypePrefix, service.modelHandler)
-	b.RegisterHandler(bot.HandlerTypeMessageText, "/end", bot.MatchTypeExact, service.endHandler)
-	b.RegisterHandler(bot.HandlerTypeMessageText, "/logout", bot.MatchTypePrefix, service.logoutHandler)
-	b.RegisterHandler(bot.HandlerTypeMessageText, "/usage", bot.MatchTypePrefix, service.usageHandler)
+	b.RegisterHandler(bot.HandlerTypeMessageText, "/end", bot.MatchTypeExact, service.EndHandler)
+	b.RegisterHandler(bot.HandlerTypeMessageText, "/config", bot.MatchTypeExact, service.ConfigHandler)
+
+	b.RegisterHandler(bot.HandlerTypeMessageText, "/clear", bot.MatchTypePrefix, service.ClearHandler)
+	b.RegisterHandler(bot.HandlerTypeMessageText, "/endpoint", bot.MatchTypePrefix, service.EndpointHandler)
+	b.RegisterHandler(bot.HandlerTypeMessageText, "/model", bot.MatchTypePrefix, service.ModelHandler)
+	b.RegisterHandler(bot.HandlerTypeMessageText, "/logout", bot.MatchTypePrefix, service.LogoutHandler)
+	b.RegisterHandler(bot.HandlerTypeMessageText, "/usage", bot.MatchTypePrefix, service.UsageHandler)
 
 	service.Bot = b
 
@@ -82,6 +88,12 @@ func (s *Service) ProcessMessageBuffer(
 	userId, chatId int64, threadId int, messageId *int, response *bot.SendMessageParams, messageBuffer []Message,
 ) error {
 	messageText := ""
+
+	// Sort messageBuffer by message.ID, since the telegram updates can be out of the order
+	slices.SortFunc(messageBuffer, func(a, b Message) int {
+		return a.ID - b.ID
+	})
+
 	// Use first occurence of chat typed message in buffer,
 	// since it most likely will be message.Text, avoiding message.Caption
 	for _, message := range messageBuffer {
@@ -99,23 +111,100 @@ func (s *Service) ProcessMessageBuffer(
 	if !ok {
 		return nil
 	}
+
+	globalConfig, err := s.GetGlobalConfig(userId)
+	if err != nil {
+		return err
+	}
+
 	// Set typing animation
 	s.SendChatAction(chatId, response.MessageThreadID, models.ChatActionTyping)
 
-	// TEMP
-	messageText = ""
-	for _, msg := range messageBuffer {
-		if msg.Type == ai.ChatSessionType {
-			messageText = msg.Message
-		}
-		log.Println(msg)
+	messageContent := llms.MessageContent{
+		Role: llms.ChatMessageTypeHuman,
 	}
-	if messageText == "" {
-		return fmt.Errorf("no text message")
+
+	for _, message := range messageBuffer {
+		switch message.Type {
+		case ai.ChatSessionType:
+			messageContent.Parts = append(messageContent.Parts, llms.TextPart(message.Message))
+
+		case ai.ImageSessionType:
+			fileBytes, err := s.GetFileBytes(message.Message)
+			if err != nil {
+				return err
+			}
+			imageUrlPart := llms.ImageURLPart(
+				llms.BinaryPart(message.MIME, fileBytes).String(),
+			)
+			if globalConfig.ExternalImageSession {
+				imageDescriptionText, err := s.AI.OneShotInference(
+					userId, chatId, threadId, ai.ImageSessionType,
+					llms.MessageContent{
+						Role: llms.ChatMessageTypeHuman,
+						Parts: []llms.ContentPart{
+							llms.TextPart("Describe this image:"),
+							imageUrlPart,
+						},
+					},
+				)
+				if err != nil {
+					return err
+				}
+
+				messageContent.Parts = append(messageContent.Parts, llms.TextPart(
+					"Image description: \n```\n"+imageDescriptionText+"\n```",
+				))
+				continue
+			}
+			messageContent.Parts = append(messageContent.Parts, imageUrlPart)
+
+		case ai.VoiceSessionType:
+			fileBytes, err := s.GetFileBytes(message.Message)
+			if err != nil {
+				return err
+			}
+			// Telegram voice messages using OGG Opus, OpenAI gpt4o supports mp3 and wav
+			wavFileBytes, err := audioconversion.OpusToWav(fileBytes)
+			if err != nil {
+				return err
+			}
+			audioPart := llms.AudioPart(wavFileBytes, "wav")
+			if globalConfig.ExternalVoiceSession {
+				voiceTranscriptionText := ""
+				if globalConfig.VoiceSessionTranscription {
+					voiceTranscriptionText, err = s.AI.AudioTranscription(
+						userId, chatId, threadId, audioPart,
+					)
+					if err != nil {
+						return err
+					}
+				} else {
+					voiceTranscriptionText, err = s.AI.OneShotInference(
+						userId, chatId, threadId, ai.VoiceSessionType,
+						llms.MessageContent{
+							Role: llms.ChatMessageTypeHuman,
+							Parts: []llms.ContentPart{
+								audioPart,
+							},
+						},
+					)
+					if err != nil {
+						return err
+					}
+				}
+
+				messageContent.Parts = append(messageContent.Parts, llms.TextPart(
+					"Voice transcription: \n```\n"+voiceTranscriptionText+"\n```",
+				))
+				continue
+			}
+			messageContent.Parts = append(messageContent.Parts, audioPart)
+		}
 	}
 
 	// Call the AI inference
-	text, err := s.AI.Inference(userId, chatId, threadId, messageText)
+	text, err := s.AI.ChatInference(userId, chatId, threadId, messageContent)
 	if err != nil {
 		return err
 	}
@@ -125,6 +214,24 @@ func (s *Service) ProcessMessageBuffer(
 	response.ParseMode = models.ParseModeMarkdownV1
 	s.SendMessage(response)
 	return nil
+}
+
+func (s *Service) GetFileBytes(fileId string) ([]byte, error) {
+	file, err := s.Bot.GetFile(s.Ctx, &bot.GetFileParams{
+		FileID: fileId,
+	})
+	if err != nil {
+		return nil, err
+	}
+	downloadUrl := s.Bot.FileDownloadLink(file)
+
+	resp, err := http.Get(downloadUrl)
+	if err != nil {
+		return nil, err
+	}
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	return bodyBytes, err
 }
 
 func (s *Service) DeleteMessage(chatId int64, messageId int) {

@@ -22,7 +22,9 @@ func (s *Service) checkSetupAISession(
 	}
 	if len(bufferedMessages) == 0 {
 		for _, message := range messageBuffer {
-			if err := s.SetBufferMessage(userId, &message.Message, message.Type); err != nil {
+			if err := s.SetBufferMessage(
+				userId, &message.Message, message.Type, message.MIME, message.ID,
+			); err != nil {
 				return false, err
 			}
 		}
@@ -34,9 +36,18 @@ func (s *Service) checkSetupAISession(
 	if err != nil {
 		return false, err
 	}
+	globalConfig, err := s.GetGlobalConfig(userId)
+	if err != nil {
+		return false, err
+	}
 
 	sessionTypes := []string{}
 	for _, message := range bufferedMessages {
+		if (!globalConfig.ExternalImageSession && message.Type == ai.ImageSessionType) ||
+			(!globalConfig.ExternalVoiceSession && message.Type == ai.VoiceSessionType) {
+			continue
+		}
+
 		if !slices.Contains(sessionTypes, message.Type) {
 			sessionTypes = append(sessionTypes, message.Type)
 		}
@@ -119,7 +130,7 @@ func (s *Service) checkSetupAISession(
 	}
 
 	for _, message := range bufferedMessages {
-		if err := s.SetBufferMessage(userId, nil, message.Type); err != nil {
+		if err := s.SetBufferMessage(userId, nil, message.Type, "", 0); err != nil {
 			return false, nil
 		}
 	}

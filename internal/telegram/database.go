@@ -15,9 +15,17 @@ type User struct {
 	AwaitingToken sql.NullInt64
 }
 
+type GlobalConfig struct {
+	ExternalImageSession      bool
+	ExternalVoiceSession      bool
+	VoiceSessionTranscription bool
+}
+
 type Message struct {
 	Message string
 	Type    string
+	MIME    string
+	ID      int
 }
 
 func (s *Service) CreateTables() error {
@@ -37,9 +45,21 @@ func (s *Service) CreateTables() error {
 	_, err = s.DBHandler.DB.Exec(`
 		CREATE TABLE IF NOT EXISTS tg_buffer_messages (
 			tg_user_id INT,
-			buffer_message TEXT NOT NULL,
-			buffer_message_type TEXT NOT NULL,
-			PRIMARY KEY (tg_user_id, buffer_message_type)
+			message TEXT NOT NULL,
+			message_type TEXT NOT NULL,
+			message_mime TEXT,
+			message_id INT NOT NULL,
+			PRIMARY KEY (tg_user_id, message_type)
+		)`)
+	if err != nil {
+		return err
+	}
+	_, err = s.DBHandler.DB.Exec(`
+		CREATE TABLE IF NOT EXISTS global_configs (
+			tg_user_id INT PRIMARY KEY,
+			external_image_session BOOLEAN DEFAULT TRUE,
+			external_voice_session BOOLEAN DEFAULT TRUE,
+			voice_session_transcription BOOLEAN DEFAULT TRUE
 		)`)
 	return err
 }
@@ -62,6 +82,45 @@ func (s *Service) GetUser(userId int64) (User, error) {
 		return user, err
 	}
 	return user, err
+}
+
+func (s *Service) GetGlobalConfig(userId int64) (GlobalConfig, error) {
+	globalConfig := GlobalConfig{}
+
+	err := s.DBHandler.DB.QueryRow(`SELECT
+		external_image_session,
+		external_voice_session,
+		voice_session_transcription
+		FROM global_configs
+		WHERE tg_user_id = $1
+	`, userId).Scan(
+		&globalConfig.ExternalImageSession,
+		&globalConfig.ExternalVoiceSession,
+		&globalConfig.VoiceSessionTranscription,
+	)
+
+	if err == sql.ErrNoRows {
+		_, err := s.DBHandler.DB.Exec(`INSERT INTO global_configs
+			(tg_user_id) VALUES ($1)`, userId)
+		return globalConfig, err
+	}
+	return globalConfig, err
+}
+
+func (s *Service) SetGlobalConfig(userId int64, globalConfig GlobalConfig) error {
+	_, err := s.DBHandler.DB.Exec(`INSERT INTO global_configs
+			(tg_user_id, external_image_session, external_voice_session, voice_session_transcription)
+		VALUES
+			($1, $2, $3, $4)
+		ON CONFLICT(tg_user_id) DO UPDATE SET
+			external_image_session = $2,
+			external_voice_session = $3,
+			voice_session_transcription = $4
+		`, userId,
+		globalConfig.ExternalImageSession,
+		globalConfig.ExternalVoiceSession,
+		globalConfig.VoiceSessionTranscription)
+	return err
 }
 
 func (s *Service) SetChatData(userId, chatId int64, threadId int, isForum bool, chatType models.ChatType) error {
@@ -109,7 +168,7 @@ func (s *Service) SetAwaitingToken(userId int64, awaitingTokenMessageId *int) er
 
 func (s *Service) GetBufferMessages(userId int64) ([]Message, error) {
 	rows, err := s.DBHandler.DB.Query(`SELECT
-			buffer_message, buffer_message_type
+			message, message_type, message_mime, message_id
 		FROM
 			tg_buffer_messages
 		WHERE
@@ -124,7 +183,7 @@ func (s *Service) GetBufferMessages(userId int64) ([]Message, error) {
 	for rows.Next() {
 		message := Message{}
 		if err := rows.Scan(
-			&message.Message, &message.Type,
+			&message.Message, &message.Type, &message.MIME, &message.ID,
 		); err != nil {
 			return nil, err
 		}
@@ -134,22 +193,24 @@ func (s *Service) GetBufferMessages(userId int64) ([]Message, error) {
 	return messages, nil
 }
 
-func (s *Service) SetBufferMessage(userId int64, message *string, messageType string) error {
+func (s *Service) SetBufferMessage(userId int64, message *string, messageType, messageMIME string, messageId int) error {
 	if message != nil {
 		_, err := s.DBHandler.DB.Exec(`INSERT INTO tg_buffer_messages
-				(tg_user_id, buffer_message, buffer_message_type)
+				(tg_user_id, message, message_type, message_mime, message_id)
 			VALUES
-				($1, $2, $3)
-			ON CONFLICT(tg_user_id, buffer_message_type) DO UPDATE SET
-				buffer_message = $2,
-				buffer_message_type = $3
-			`, userId, *message, messageType)
+				($1, $2, $3, $4, $5)
+			ON CONFLICT(tg_user_id, message_type) DO UPDATE SET
+				message = $2,
+				message_type = $3,
+				message_mime = $4,
+				message_id = $5
+			`, userId, *message, messageType, messageMIME, messageId)
 		return err
 	}
 	_, err := s.DBHandler.DB.Exec(`DELETE FROM tg_buffer_messages
 		WHERE
 			tg_user_id = $1 AND
-			buffer_message_type = $2
+			message_type = $2
 		`, userId, messageType)
 	return err
 }

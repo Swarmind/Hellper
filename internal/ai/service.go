@@ -20,6 +20,7 @@ type Service struct {
 	DBHandler   *database.Handler
 }
 
+// Creates a new AI Service.
 func NewAIService(dbHandler *database.Handler) (*Service, error) {
 	service := Service{
 		DBHandler: dbHandler,
@@ -28,6 +29,7 @@ func NewAIService(dbHandler *database.Handler) (*Service, error) {
 	return &service, err
 }
 
+// Loads handler from the sync.Map runtime cache, if any
 func (s *Service) GetHandler(userId int64) (*openai.LLM, error) {
 	handlerAny, ok := s.LLMHandlers.Load(userId)
 	if !ok {
@@ -40,10 +42,12 @@ func (s *Service) GetHandler(userId int64) (*openai.LLM, error) {
 	return handler, nil
 }
 
+// Drops handler from the sync.Map runtime cache
 func (s *Service) DropHandler(userId int64) {
 	s.LLMHandlers.Delete(userId)
 }
 
+// Loads handler to the sync.Map runtime cache
 func (s *Service) UpdateHandler(userId int64, token, model, endpointURL string) (*openai.LLM, error) {
 	llm, err := openai.New(
 		openai.WithToken(token),

@@ -15,7 +15,7 @@ import (
 
 var ErrWrongCallbackData = errors.New("wrong callback data")
 
-func (s *Service) rootHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
+func (s *Service) RootHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	if update.Message == nil || update.Message.From == nil {
 		return
 	}
@@ -104,7 +104,80 @@ func (s *Service) gatekeepMessage(userId int64, message *models.Message) (bool, 
 	return true, nil
 }
 
-func (s *Service) endHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
+func (s *Service) ConfigHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
+	userId, chatId, threadId, isForum, chatType := update.Message.From.ID,
+		update.Message.Chat.ID,
+		update.Message.MessageThreadID,
+		update.Message.Chat.IsForum,
+		update.Message.Chat.Type
+	defer s.DeleteMessage(chatId, update.Message.ID)
+
+	response := CreateResponseMessageParams(chatId, threadId, isForum)
+	if err := s.SetChatData(userId, chatId, threadId, isForum, chatType); err != nil {
+		s.SendLogError(response, err)
+		return
+	}
+
+	globalConfig, err := s.GetGlobalConfig(userId)
+	if err != nil {
+		s.SendLogError(response, err)
+		return
+	}
+
+	response.Text = ConfigMessage
+	response.ReplyMarkup = CreateConfigMarkup(globalConfig)
+	s.SendMessage(response)
+}
+
+func (s *Service) ConfigCallbackHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
+	if _, err := b.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{
+		CallbackQueryID: update.CallbackQuery.ID,
+		ShowAlert:       false,
+	}); err != nil {
+		s.Log.LogFormatError(err, 1)
+		return
+	}
+
+	userId, chatId, threadId, isForum, chatType := update.CallbackQuery.From.ID,
+		update.CallbackQuery.Message.Message.Chat.ID,
+		update.CallbackQuery.Message.Message.MessageThreadID,
+		update.CallbackQuery.Message.Message.Chat.IsForum,
+		update.CallbackQuery.Message.Message.Chat.Type
+
+	response := CreateResponseMessageParams(chatId, threadId, isForum)
+
+	if err := s.SetChatData(userId, chatId, threadId, isForum, chatType); err != nil {
+		s.SendLogError(response, err)
+		return
+	}
+
+	callbackDataFields := strings.Split(update.CallbackQuery.Data, "_")
+
+	if len(callbackDataFields) < 2 {
+		s.SendLogError(response, ErrWrongCallbackData)
+		return
+	}
+
+	if callbackDataFields[1] == "close" {
+		s.DeleteMessage(chatId, update.CallbackQuery.Message.Message.ID)
+		return
+	}
+
+	markup, err := s.ProcessConfigFields(userId, callbackDataFields)
+	if err != nil {
+		s.SendLogError(response, err)
+	}
+
+	if _, err := b.EditMessageReplyMarkup(ctx, &bot.EditMessageReplyMarkupParams{
+		ChatID:      chatId,
+		MessageID:   update.CallbackQuery.Message.Message.ID,
+		ReplyMarkup: markup,
+	}); err != nil {
+		s.SendLogError(response, err)
+	}
+}
+
+func (s *Service) EndHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	userId, chatId, threadId, isForum, chatType := update.Message.From.ID,
 		update.Message.Chat.ID,
 		update.Message.MessageThreadID,
@@ -133,7 +206,7 @@ func (s *Service) endHandler(ctx context.Context, b *bot.Bot, update *models.Upd
 	s.SendMessage(response)
 }
 
-func (s *Service) endpointHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
+func (s *Service) EndpointHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	userId, chatId, threadId, isForum, chatType := update.Message.From.ID,
 		update.Message.Chat.ID,
 		update.Message.MessageThreadID,
@@ -178,8 +251,8 @@ func (s *Service) endpointHandler(ctx context.Context, b *bot.Bot, update *model
 	s.SendMessage(response)
 }
 
-func (s *Service) endpointCallbackHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
-	if _, err := s.Bot.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{
+func (s *Service) EndpointCallbackHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
+	if _, err := b.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{
 		CallbackQueryID: update.CallbackQuery.ID,
 		ShowAlert:       false,
 	}); err != nil {
@@ -223,7 +296,7 @@ func (s *Service) endpointCallbackHandler(ctx context.Context, b *bot.Bot, updat
 	s.ChainTokenInput(userId, sessionType, response)
 }
 
-func (s *Service) modelHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
+func (s *Service) ModelHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	userId, chatId, threadId, isForum, chatType := update.Message.From.ID,
 		update.Message.Chat.ID,
 		update.Message.MessageThreadID,
@@ -276,8 +349,8 @@ func (s *Service) modelHandler(ctx context.Context, b *bot.Bot, update *models.U
 	s.SendMessage(response)
 }
 
-func (s *Service) modelCallbackHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
-	if _, err := s.Bot.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{
+func (s *Service) ModelCallbackHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
+	if _, err := b.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{
 		CallbackQueryID: update.CallbackQuery.ID,
 		ShowAlert:       false,
 	}); err != nil {
@@ -340,7 +413,7 @@ func (s *Service) modelCallbackHandler(ctx context.Context, b *bot.Bot, update *
 	}
 }
 
-func (s *Service) clearHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
+func (s *Service) ClearHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	userId, chatId, threadId, isForum, chatType := update.Message.From.ID,
 		update.Message.Chat.ID,
 		update.Message.MessageThreadID,
@@ -379,7 +452,7 @@ func (s *Service) clearHandler(ctx context.Context, b *bot.Bot, update *models.U
 	s.SendMessage(response)
 }
 
-func (s *Service) logoutHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
+func (s *Service) LogoutHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	userId, chatId, threadId, isForum, chatType := update.Message.From.ID,
 		update.Message.Chat.ID,
 		update.Message.MessageThreadID,
@@ -423,7 +496,7 @@ func (s *Service) logoutHandler(ctx context.Context, b *bot.Bot, update *models.
 	s.SendMessage(response)
 }
 
-func (s *Service) usageHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
+func (s *Service) UsageHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	userId, chatId, threadId, isForum, chatType := update.Message.From.ID,
 		update.Message.Chat.ID,
 		update.Message.MessageThreadID,

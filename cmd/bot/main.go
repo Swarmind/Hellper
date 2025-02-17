@@ -29,6 +29,8 @@ func main() {
 	tgBot, err := telegram.NewService(
 		loadEnv("BOT_TOKEN"),
 		db, ai,
+		// We are using logwrapper, since we want to have a funcName/line data in the tg messages
+		// Normally, the logger flags can provide such functionality
 		&logwrapper.Service{
 			Log: logger,
 		})
