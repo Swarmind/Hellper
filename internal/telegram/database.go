@@ -7,12 +7,13 @@ import (
 )
 
 type User struct {
-	ChatID        sql.NullInt64
-	ThreadID      sql.NullInt64
-	IsForum       sql.NullBool
-	ChatType      sql.NullString
-	InDialog      sql.NullBool
-	AwaitingToken sql.NullInt64
+	ChatID              sql.NullInt64
+	ThreadID            sql.NullInt64
+	IsForum             sql.NullBool
+	ChatType            sql.NullString
+	InDialog            sql.NullBool
+	AwaitingToken       sql.NullInt64
+	AwaitingSessionType sql.NullString
 }
 
 type GlobalConfig struct {
@@ -37,7 +38,8 @@ func (s *Service) CreateTables() error {
 			is_forum BOOLEAN,
 			chat_type TEXT,
 			in_dialog BOOLEAN,
-			awaiting_token INT
+			awaiting_token INT,
+			awaiting_session_type TEXT
 		)`)
 	if err != nil {
 		return err
@@ -68,12 +70,13 @@ func (s *Service) GetUser(userId int64) (User, error) {
 	user := User{}
 	err := s.DBHandler.DB.QueryRow(`SELECT
 		chat_id, thread_id, is_forum, chat_type,
-		in_dialog, awaiting_token
+		in_dialog, awaiting_token, awaiting_session_type
 		FROM tg_sessions
 		WHERE tg_user_id = $1
 	`, userId).Scan(
 		&user.ChatID, &user.ThreadID, &user.IsForum,
 		&user.ChatType, &user.InDialog, &user.AwaitingToken,
+		&user.AwaitingSessionType,
 	)
 
 	if err == sql.ErrNoRows {
@@ -148,7 +151,7 @@ func (s *Service) SetInDialogState(userId int64, inDialog bool) error {
 	return err
 }
 
-func (s *Service) SetAwaitingToken(userId int64, awaitingTokenMessageId *int) error {
+func (s *Service) SetAwaitingToken(userId int64, sessionType string, awaitingTokenMessageId *int) error {
 	var awaitingTokenMessageIdValue interface{}
 	if awaitingTokenMessageId != nil {
 		awaitingTokenMessageIdValue = *awaitingTokenMessageId
@@ -157,12 +160,13 @@ func (s *Service) SetAwaitingToken(userId int64, awaitingTokenMessageId *int) er
 	}
 
 	_, err := s.DBHandler.DB.Exec(`INSERT INTO tg_sessions
-			(tg_user_id, awaiting_token)
+			(tg_user_id, awaiting_token, awaiting_session_type)
 		VALUES
-			($1, $2)
+			($1, $2, $3)
 		ON CONFLICT(tg_user_id) DO UPDATE SET
-			awaiting_token = $2
-		`, userId, awaitingTokenMessageIdValue)
+			awaiting_token = $2,
+			awaiting_session_type = $3
+		`, userId, awaitingTokenMessageIdValue, sessionType)
 	return err
 }
 

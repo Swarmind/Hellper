@@ -80,6 +80,15 @@ func (s *Service) CheckSetupAISession(
 				return false, ErrNonTextMessage
 			}
 
+			if user.AwaitingSessionType.Valid {
+				sessionType = user.AwaitingSessionType.String
+			}
+			session, err := s.AI.GetSession(userId, sessionType)
+			if err != nil && err != sql.ErrNoRows {
+				s.SendLogError(response, err)
+				return false, err
+			}
+
 			fields := strings.Fields(updateMessageText)
 
 			if err := s.AI.InsertToken(
@@ -88,7 +97,7 @@ func (s *Service) CheckSetupAISession(
 				return false, err
 			}
 
-			if err := s.SetAwaitingToken(userId, nil); err != nil {
+			if err := s.SetAwaitingToken(userId, sessionType, nil); err != nil {
 				return false, err
 			}
 
@@ -222,7 +231,7 @@ func (s *Service) ChainTokenInput(userId int64, sessionType string, response *bo
 	response.Text = fmt.Sprintf(TokenInputMessage, session.Endpoint.Name)
 	msgId := s.SendMessage(response)
 
-	if err = s.SetAwaitingToken(userId, msgId); err != nil {
+	if err = s.SetAwaitingToken(userId, sessionType, msgId); err != nil {
 		s.SendLogError(response, err)
 		return
 	}
