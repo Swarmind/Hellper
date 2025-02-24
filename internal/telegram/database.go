@@ -32,7 +32,7 @@ type Message struct {
 func (s *Service) CreateTables() error {
 	_, err := s.DBHandler.DB.Exec(`
 		CREATE TABLE IF NOT EXISTS tg_sessions (
-			tg_user_id INT PRIMARY KEY,
+			tg_user_id BIGINT PRIMARY KEY,
 			chat_id BIGINT,
 			thread_id BIGINT,
 			is_forum BOOLEAN,
@@ -46,7 +46,7 @@ func (s *Service) CreateTables() error {
 	}
 	_, err = s.DBHandler.DB.Exec(`
 		CREATE TABLE IF NOT EXISTS tg_buffer_messages (
-			tg_user_id INT,
+			tg_user_id BIGINT,
 			message TEXT NOT NULL,
 			message_type TEXT NOT NULL,
 			message_mime TEXT,
@@ -58,7 +58,7 @@ func (s *Service) CreateTables() error {
 	}
 	_, err = s.DBHandler.DB.Exec(`
 		CREATE TABLE IF NOT EXISTS global_configs (
-			tg_user_id INT PRIMARY KEY,
+			tg_user_id BIGINT PRIMARY KEY,
 			external_vision_session BOOLEAN DEFAULT TRUE,
 			external_voice_session BOOLEAN DEFAULT TRUE,
 			voice_session_transcription BOOLEAN DEFAULT TRUE

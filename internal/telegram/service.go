@@ -1,6 +1,7 @@
 package telegram
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"hellper/internal/ai"
@@ -11,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"slices"
 	"sync"
 
@@ -214,31 +216,14 @@ func (s *Service) ProcessMessageBuffer(
 				return err
 			}
 
-			if len(imageUrls) > 1 {
-				media := []models.InputMedia{}
-
-				for _, url := range imageUrls {
-					media = append(media, &models.InputMediaPhoto{
-						Media: url,
-					})
-				}
-
-				_, err = s.Bot.SendMediaGroup(s.Ctx, &bot.SendMediaGroupParams{
-					ChatID:          chatId,
-					MessageThreadID: threadId,
-					Media:           media,
-				})
+			err = s.sendImageURLs(chatId, threadId, imageUrls)
+			// TODO add check for exact bad request tg type
+			if err != nil {
+				// Fallback to downloading and sending bytes if telegram can't handle image url
+				err = s.sendBufferImageURLs(chatId, threadId, imageUrls)
 				return err
 			}
-
-			_, err = s.Bot.SendPhoto(s.Ctx, &bot.SendPhotoParams{
-				ChatID:          chatId,
-				MessageThreadID: threadId,
-				Photo: &models.InputFileString{
-					Data: imageUrls[0],
-				},
-			})
-			return err
+			return nil
 		}
 	}
 
@@ -253,6 +238,82 @@ func (s *Service) ProcessMessageBuffer(
 	response.ParseMode = models.ParseModeMarkdownV1
 	s.SendMessage(response)
 	return nil
+}
+
+func (s *Service) sendBufferImageURLs(chatId int64, threadId int, imageUrls []string) error {
+	imageBytes := map[string]*bytes.Reader{}
+	for _, url := range imageUrls {
+		resp, err := http.Get(url)
+		if err != nil {
+			return err
+		}
+		imageData, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return err
+		}
+
+		imageBytes[filepath.Base(url)] = bytes.NewReader(imageData)
+	}
+
+	if len(imageBytes) > 1 {
+		media := []models.InputMedia{}
+
+		for filename, bytes := range imageBytes {
+			media = append(media, &models.InputMediaPhoto{
+				Media:           "attach://" + filename,
+				MediaAttachment: bytes,
+			})
+		}
+
+		_, err := s.Bot.SendMediaGroup(s.Ctx, &bot.SendMediaGroupParams{
+			ChatID:          chatId,
+			MessageThreadID: threadId,
+			Media:           media,
+		})
+		return err
+	}
+
+	for filename, bytes := range imageBytes {
+		_, err := s.Bot.SendPhoto(s.Ctx, &bot.SendPhotoParams{
+			ChatID:          chatId,
+			MessageThreadID: threadId,
+			Photo: &models.InputFileUpload{
+				Filename: filename,
+				Data:     bytes,
+			},
+		})
+		return err
+	}
+
+	return nil
+}
+
+func (s *Service) sendImageURLs(chatId int64, threadId int, imageUrls []string) error {
+	if len(imageUrls) > 1 {
+		media := []models.InputMedia{}
+
+		for _, url := range imageUrls {
+			media = append(media, &models.InputMediaPhoto{
+				Media: url,
+			})
+		}
+
+		_, err := s.Bot.SendMediaGroup(s.Ctx, &bot.SendMediaGroupParams{
+			ChatID:          chatId,
+			MessageThreadID: threadId,
+			Media:           media,
+		})
+		return err
+	}
+
+	_, err := s.Bot.SendPhoto(s.Ctx, &bot.SendPhotoParams{
+		ChatID:          chatId,
+		MessageThreadID: threadId,
+		Photo: &models.InputFileString{
+			Data: imageUrls[0],
+		},
+	})
+	return err
 }
 
 func (s *Service) GetFileBytes(fileId string) ([]byte, error) {
